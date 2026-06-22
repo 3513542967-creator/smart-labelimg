@@ -1,0 +1,1 @@
+"""Smart LabelImg package."""
