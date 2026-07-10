@@ -155,13 +155,13 @@ def mask_to_box(mask: np.ndarray, label: str, score: float | None = None) -> Box
 
 
 @dataclass
-class SamBackend:
+class MobileSamBackend:
     checkpoint_path: str
-    model_type: str = "vit_b"
+    model_type: str = "vit_t"
     device: str | None = None
 
     def __post_init__(self) -> None:
-        from segment_anything import SamPredictor, sam_model_registry
+        from mobile_sam import SamPredictor, sam_model_registry
         import torch
 
         if self.device is None:
@@ -226,7 +226,7 @@ class SamBackend:
         return ClassicalVisionBackend().find_similar(image, query_box, label)
 
 
-SamClickBackend = SamBackend
+SamClickBackend = MobileSamBackend
 
 
 @dataclass

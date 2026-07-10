@@ -53,7 +53,7 @@ from smart_labelimg.settings import AppSettings, SettingsStore
 
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
-SAM_CHECKPOINT = resource_path("models/sam_vit_b_01ec64.pth")
+MOBILE_SAM_CHECKPOINT = resource_path("models/mobile_sam.pt")
 
 
 class ImageCanvas(QWidget):
@@ -583,11 +583,11 @@ class MainWindow(QMainWindow):
         self.update_save_target_label()
 
     def _create_backend(self):
-        if SAM_CHECKPOINT.exists():
+        if MOBILE_SAM_CHECKPOINT.exists():
             try:
-                return SamClickBackend(str(SAM_CHECKPOINT))
+                return SamClickBackend(str(MOBILE_SAM_CHECKPOINT))
             except Exception as exc:
-                print(f"SAM backend unavailable, falling back to classical vision: {exc}", file=sys.stderr)
+                print(f"MobileSAM backend unavailable, falling back to classical vision: {exc}", file=sys.stderr)
         return ClassicalVisionBackend()
 
     def _settings_annotation_format(self) -> AnnotationFormat:

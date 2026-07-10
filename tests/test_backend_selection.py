@@ -3,21 +3,21 @@ from smart_labelimg.app import MainWindow
 from PySide6.QtWidgets import QApplication
 
 
-class FakeSamBackend:
+class FakeMobileSamBackend:
     def __init__(self, checkpoint_path: str):
         self.checkpoint_path = checkpoint_path
 
 
 def test_main_window_uses_sam_for_assisted_boxes_without_text_auto_detect(monkeypatch, tmp_path):
-    checkpoint = tmp_path / "sam_vit_b_01ec64.pth"
+    checkpoint = tmp_path / "mobile_sam.pt"
     checkpoint.write_bytes(b"fake checkpoint")
-    monkeypatch.setattr(app_module, "SAM_CHECKPOINT", checkpoint)
-    monkeypatch.setattr(app_module, "SamClickBackend", FakeSamBackend)
+    monkeypatch.setattr(app_module, "MOBILE_SAM_CHECKPOINT", checkpoint)
+    monkeypatch.setattr(app_module, "SamClickBackend", FakeMobileSamBackend)
 
     app = QApplication.instance() or QApplication([])
     window = MainWindow()
 
-    assert isinstance(window.backend, FakeSamBackend)
+    assert isinstance(window.backend, FakeMobileSamBackend)
     assert window.backend.checkpoint_path == str(checkpoint)
     assert not hasattr(window, "locate_backend")
     window.close()

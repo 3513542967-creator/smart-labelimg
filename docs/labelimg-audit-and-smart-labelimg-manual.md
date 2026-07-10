@@ -186,7 +186,7 @@ Main LabelImg shortcuts from README and source:
 3. macOS: open `Smart LabelImg.app`.
 4. Windows: open `Smart LabelImg\Smart LabelImg.exe`.
 5. Linux: open `Smart LabelImg`.
-6. The release package includes SAM and `models/sam_vit_b_01ec64.pth`; no separate model download is required.
+6. The release package includes MobileSAM and `models/mobile_sam.pt`; no separate model download is required.
 7. For Windows source install and exe builds, see `docs/windows-install-build.md`.
 
 ### Basic Opening Logic
@@ -216,13 +216,13 @@ Main LabelImg shortcuts from README and source:
 6. Press arrow keys to move the selected box by 1 pixel.
 7. Right-click or double-click a box to open class/delete actions.
 
-### Smart SAM Mode
+### Smart MobileSAM Mode
 
 1. Click `智能标注`, or press `Shift` until the status says smart mode.
 2. Left-drag a rough box around the object.
-3. SAM refines the rough box into a tighter object box.
+3. MobileSAM refines the rough box into a tighter object box.
 4. Right-click/secondary-click on an object to create a box from a point prompt.
-5. The simplified app uses the bundled SAM model directly without a separate crop-size tuning control.
+5. The simplified app uses the bundled MobileSAM model directly without a separate crop-size tuning control.
 
 ### Class Editing
 
@@ -305,7 +305,7 @@ Implemented after the audit:
 - Added label text display toggle.
 - Added zoom in, zoom out, and fit window.
 - Added verified image tracking.
-- Kept SAM smart mode and removed the old crop-size tuning setting.
+- Kept MobileSAM smart mode and removed the old crop-size tuning setting.
 
 Lower-priority LabelImg parity still open:
 

@@ -8,12 +8,12 @@ macOS release. Review upstream licenses before redistributing modified builds.
 - Python 3.11 runtime and standard library.
 - PySide6 / Qt for the desktop UI.
 - OpenCV and NumPy for image loading and local image processing.
-- PyTorch for SAM inference on Apple Silicon where available.
+- PyTorch for MobileSAM inference on Apple Silicon where available.
 - PyInstaller for application bundling.
 
 ## Model
 
-- Segment Anything / SAM checkpoint: `models/sam_vit_b_01ec64.pth`.
+- MobileSAM checkpoint: `models/mobile_sam.pt`.
 - The release bundles this checkpoint so end users do not need a separate model
   download.
 

@@ -6,11 +6,11 @@ Smart LabelImg supports Windows 10/11 on 64-bit Python 3.11.
 
 Use the packaged release when available:
 
-1. Download `Smart-LabelImg-SAM-Windows-x64.zip`.
+1. Download `Smart-LabelImg-MobileSAM-Windows-x64.zip`.
 2. Unzip it.
 3. Open `Smart LabelImg\Smart LabelImg.exe`.
 
-The release package includes `models\sam_vit_b_01ec64.pth`, so smart annotation works
+The release package includes `models\mobile_sam.pt`, so smart annotation works
 without a separate model download.
 
 ## Run From Source
@@ -51,7 +51,7 @@ dist\Smart LabelImg\Smart LabelImg.exe
 The distributable zip is:
 
 ```text
-release\Smart-LabelImg-SAM-Windows-x64.zip
+release\Smart-LabelImg-MobileSAM-Windows-x64.zip
 ```
 
 ## Useful Options
@@ -61,7 +61,7 @@ release\Smart-LabelImg-SAM-Windows-x64.zip
 ```
 
 Installs only the UI dependencies. Use this only for development; smart
-annotation requires SAM.
+annotation requires MobileSAM.
 
 ```powershell
 .\build_windows.ps1 -SkipInstall
@@ -79,7 +79,7 @@ Builds the exe folder without creating the release zip.
 
 - Windows builds must be made on Windows because PyInstaller creates
   platform-specific binaries.
-- If `models\sam_vit_b_01ec64.pth` is missing, source runs and release builds stop
-  with an explicit error because this project requires SAM.
-- CPU works, but SAM will be slower than CUDA. The app still uses the
+- If `models\mobile_sam.pt` is missing, source runs and release builds stop
+  with an explicit error because this project requires MobileSAM.
+- CPU works, but MobileSAM will be slower than CUDA. The app still uses the
   crop-size setting to reduce inference work.

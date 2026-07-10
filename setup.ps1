@@ -34,7 +34,7 @@ $venvPython = ".\.venv\Scripts\python.exe"
 
 if (-not $SkipAi) {
   if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-    throw "Git is required to install Segment Anything from requirements-ai.txt. Install Git for Windows, or rerun with -SkipAi for UI-only development."
+    throw "Git is required to install MobileSAM from requirements-ai.txt. Install Git for Windows, or rerun with -SkipAi for UI-only development."
   }
   & $venvPython -m pip install -r requirements-ai.txt
 }

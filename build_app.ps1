@@ -6,8 +6,8 @@ param(
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-if (-not (Test-Path .\models\sam_vit_b_01ec64.pth)) {
-  throw "models\sam_vit_b_01ec64.pth was not found. The Windows release must include SAM."
+if (-not (Test-Path .\models\mobile_sam.pt)) {
+  throw "models\mobile_sam.pt was not found. The Windows release must include MobileSAM."
 }
 
 if (-not $SkipInstall) {
@@ -31,7 +31,7 @@ Write-Host "Build complete: $exePath"
 if (-not $NoZip) {
   New-Item -ItemType Directory -Force -Path release | Out-Null
   $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
-  $zipPath = "release\Smart-LabelImg-SAM-Windows-$arch.zip"
+  $zipPath = "release\Smart-LabelImg-MobileSAM-Windows-$arch.zip"
   if (Test-Path $zipPath) {
     Remove-Item $zipPath -Force
   }

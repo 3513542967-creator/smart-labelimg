@@ -6,8 +6,8 @@ if (-not (Test-Path .\.venv\Scripts\python.exe)) {
   & .\setup.ps1
 }
 
-if (-not (Test-Path .\models\sam_vit_b_01ec64.pth)) {
-  throw "models\sam_vit_b_01ec64.pth was not found. Smart annotation requires SAM. Restore the models folder or download the release zip that includes the model."
+if (-not (Test-Path .\models\mobile_sam.pt)) {
+  throw "models\mobile_sam.pt was not found. Smart annotation requires MobileSAM. Restore the models folder or download the release zip that includes the model."
 }
 
 & .\.venv\Scripts\python.exe -m smart_labelimg.app

@@ -24,7 +24,6 @@ Thumbs.db
 .worktrees/
 
 # Large optional model/runtime assets
-models/sam_vit_b_01ec64.pth
 vendor/
 
 # Local generated verification artifacts

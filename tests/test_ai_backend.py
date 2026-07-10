@@ -1,6 +1,6 @@
 import numpy as np
 
-from smart_labelimg.ai_backend import ClassicalVisionBackend, LocateAnythingBackend, SamBackend, mask_to_box
+from smart_labelimg.ai_backend import ClassicalVisionBackend, LocateAnythingBackend, MobileSamBackend, mask_to_box
 
 
 def make_scene():
@@ -43,7 +43,7 @@ def test_classical_refine_from_box_tightens_to_colored_component():
     assert box.y2 < 140
 
 
-def test_sam_refine_from_box_uses_full_image_and_original_box_coordinates():
+def test_mobile_sam_refine_from_box_uses_full_image_and_original_box_coordinates():
     class FakePredictor:
         def __init__(self):
             self.calls = []
@@ -57,7 +57,7 @@ def test_sam_refine_from_box_uses_full_image_and_original_box_coordinates():
             mask[30:80, 20:70] = True
             return np.array([mask]), np.array([0.93]), None
 
-    backend = object.__new__(SamBackend)
+    backend = object.__new__(MobileSamBackend)
     backend.predictor = FakePredictor()
     image = np.zeros((100, 120, 3), dtype=np.uint8)
 
@@ -72,7 +72,7 @@ def test_sam_refine_from_box_uses_full_image_and_original_box_coordinates():
     assert np.array_equal(predict_kwargs["box"], np.array([20, 30, 70, 80], dtype=np.float32))
 
 
-def test_sam_click_uses_full_image_and_original_point_coordinates():
+def test_mobile_sam_click_uses_full_image_and_original_point_coordinates():
     class FakePredictor:
         def __init__(self):
             self.calls = []
@@ -86,7 +86,7 @@ def test_sam_click_uses_full_image_and_original_point_coordinates():
             mask[55:65, 48:60] = True
             return np.array([mask]), np.array([0.88]), None
 
-    backend = object.__new__(SamBackend)
+    backend = object.__new__(MobileSamBackend)
     backend.predictor = FakePredictor()
     image = np.zeros((100, 120, 3), dtype=np.uint8)
 

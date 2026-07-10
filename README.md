@@ -2,7 +2,7 @@
 
 Smart LabelImg is a modern LabelImg-style annotation tool with YOLO TXT, Pascal VOC XML,
 and local AI-assisted boxes.
-The main workflow is SAM-assisted: draw around an object and SAM tightens the box.
+The main workflow is MobileSAM-assisted: draw around an object and MobileSAM tightens the box.
 
 ## Download And Run
 
@@ -16,19 +16,19 @@ Smart-LabelImg-macOS-Apple-Silicon.zip
 2. Unzip it.
 3. Open `Smart LabelImg.app`.
 
-No Python commands are needed for end users. The packaged app includes SAM
-and `models/sam_vit_b_01ec64.pth`, so smart box refinement works without a separate
+No Python commands are needed for end users. The packaged app includes MobileSAM
+and `models/mobile_sam.pt`, so smart box refinement works without a separate
 model download.
 
 On macOS, if the system blocks the app the first time, right-click
 `Smart LabelImg.app` and choose `Open`. This GitHub build is intended for direct
 download; App Store distribution and notarization are future work.
 
-On Windows, download `Smart-LabelImg-SAM-Windows-x64.zip`, unzip it, and
+On Windows, download `Smart-LabelImg-MobileSAM-Windows-x64.zip`, unzip it, and
 double-click `Smart LabelImg.exe`. See
 `docs/windows-install-build.md` for source install and exe build steps.
 
-Smart box refinement runs directly through the bundled SAM model. There is no
+Smart box refinement runs directly through the bundled MobileSAM model. There is no
 separate crop-size tuning control in the simplified app.
 
 See the full LabelImg comparison and operating manual:
@@ -36,10 +36,10 @@ See the full LabelImg comparison and operating manual:
 
 ## Build A Release
 
-Release builds require the standard SAM checkpoint at:
+Release builds require the bundled MobileSAM checkpoint at:
 
 ```text
-models/sam_vit_b_01ec64.pth
+models/mobile_sam.pt
 ```
 
 macOS:
@@ -64,7 +64,7 @@ Windows PowerShell:
 ```
 
 The Windows build creates `dist\Smart LabelImg\Smart LabelImg.exe` and
-`release\Smart-LabelImg-SAM-Windows-x64.zip`.
+`release\Smart-LabelImg-MobileSAM-Windows-x64.zip`.
 
 Linux:
 
@@ -112,8 +112,8 @@ run_windows.bat
 - Undo/redo annotation edits.
 - Draw boxes manually in normal LabelImg mode.
 - Select, move, and resize boxes with LabelImg-style controls.
-- Draw rough boxes in smart mode and let SAM refine them.
-- Use right click / secondary click in smart mode to generate a SAM box from one point.
+- Draw rough boxes in smart mode and let MobileSAM refine them.
+- Use right click / secondary click in smart mode to generate a MobileSAM box from one point.
 - Click a box to change its class or delete it.
 - Add, double-click rename, and delete class names in the right-side class panel.
 - Renaming a class also renames all existing boxes that use that class.
@@ -131,7 +131,7 @@ run_windows.bat
 - `Open`: choose one image or an image folder.
 - `Open Label`: choose one `.xml` / `.txt` label file or a label folder.
 - `普通 LabelImg`: manual box mode.
-- `智能标注`: rough-box SAM refinement mode.
+- `智能标注`: rough-box MobileSAM refinement mode.
 - `Save Format`: choose YOLO TXT or Pascal VOC XML before saving.
 - `Save/Target`: choose a label file or label folder; annotation changes save automatically.
 - `Save`: save to the loaded label file, or to a same-name `.txt` / `.xml` file.
@@ -216,7 +216,7 @@ python verify_sam_click.py
 
 ## Third Party Notices
 
-See `THIRD_PARTY_NOTICES.md` for bundled dependency and SAM model
+See `THIRD_PARTY_NOTICES.md` for bundled dependency and MobileSAM model
 attribution notes.
 
 Expected evidence from `verify_demo.py`:
