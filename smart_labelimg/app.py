@@ -38,6 +38,7 @@ from smart_labelimg.annotation import (
     voc_path_for_image,
     yolo_path_for_image,
 )
+from smart_labelimg.history import AnnotationHistory, AnnotationSnapshot
 from smart_labelimg.labels import SIMPLE_LABELS
 from smart_labelimg.paths import resource_path
 from smart_labelimg.save_coordinator import SaveCoordinator, SaveState
@@ -49,6 +50,7 @@ MOBILE_SAM_CHECKPOINT = resource_path("models/mobile_sam.pt")
 
 class ImageCanvas(QWidget):
     boxes_changed = Signal()
+    edit_completed = Signal()
     selected_changed = Signal()
     smart_clicked = Signal(int, int)
     smart_box_drawn = Signal(int, int, int, int)
@@ -69,6 +71,7 @@ class ImageCanvas(QWidget):
         self.drag_current: QPoint | None = None
         self.drag_action: str | None = None
         self.drag_box_start: Box | None = None
+        self.drag_boxes_start: tuple[Box, ...] = ()
         self.resize_handle: str | None = None
         self.handle_radius = 6
         self.min_box_size = 3
@@ -338,6 +341,7 @@ class ImageCanvas(QWidget):
             self.drag_action = "resize"
             self.resize_handle = handle
             self.drag_current = event.position().toPoint()
+            self.drag_boxes_start = tuple(self.boxes)
             return
 
         if clicked_index >= 0:
@@ -348,6 +352,7 @@ class ImageCanvas(QWidget):
             self.drag_start = event.position().toPoint()
             self.drag_current = self.drag_start
             self.drag_box_start = self.boxes[clicked_index].normalized()
+            self.drag_boxes_start = tuple(self.boxes)
             return
 
         if self.mode == "smart":
@@ -404,10 +409,14 @@ class ImageCanvas(QWidget):
 
     def mouseReleaseEvent(self, event):
         if self.drag_action in {"resize", "move"}:
+            changed = self.drag_boxes_start != tuple(self.boxes)
             self.drag_action = None
             self.drag_box_start = None
+            self.drag_boxes_start = ()
             self.resize_handle = None
             self.refresh_after_drag()
+            if changed:
+                self.edit_completed.emit()
             return
 
         if not self.drag_start or not self.drag_current:
@@ -436,6 +445,7 @@ class ImageCanvas(QWidget):
             self.selected_index = len(self.boxes) - 1
             self.boxes_changed.emit()
             self.selected_changed.emit()
+            self.edit_completed.emit()
         self.update()
 
     def mouseDoubleClickEvent(self, event):
@@ -474,7 +484,10 @@ class ImageCanvas(QWidget):
             super().keyPressEvent(event)
             return
         dx, dy = moves[event.key()]
+        before = tuple(self.boxes)
         if self.move_selected_box(dx, dy):
+            if tuple(self.boxes) != before:
+                self.edit_completed.emit()
             event.accept()
             return
         super().keyPressEvent(event)
@@ -501,6 +514,9 @@ class MainWindow(QMainWindow):
         self.save_coordinator = SaveCoordinator()
         self.save_state = SaveState.SAVED
         self.loaded_fingerprints: dict[Path, str | None] = {}
+        self.history = AnnotationHistory()
+        self.undo_action: QAction | None = None
+        self.redo_action: QAction | None = None
 
         self.canvas = ImageCanvas()
         self.class_list = QListWidget()
@@ -516,6 +532,8 @@ class MainWindow(QMainWindow):
         self.setStatusBar(self.status)
         self._build_ui()
         self._refresh_classes()
+        self.history.reset(self.canvas.boxes, self.labels)
+        self.update_history_actions()
         self.update_save_target_label()
 
     def _create_backend(self):
@@ -527,6 +545,24 @@ class MainWindow(QMainWindow):
         return ClassicalVisionBackend()
 
     def _build_ui(self) -> None:
+        edit_menu = self.menuBar().addMenu("Edit")
+        self.undo_action = QAction("Undo", self)
+        self.undo_action.setShortcut(QKeySequence.StandardKey.Undo)
+        self.undo_action.triggered.connect(self.undo_annotation_edit)
+        edit_menu.addAction(self.undo_action)
+        self.addAction(self.undo_action)
+        self.redo_action = QAction("Redo", self)
+        self.redo_action.setShortcuts(
+            [
+                QKeySequence(QKeySequence.StandardKey.Redo),
+                QKeySequence("Ctrl+Shift+Z"),
+                QKeySequence("Meta+Shift+Z"),
+            ]
+        )
+        self.redo_action.triggered.connect(self.redo_annotation_edit)
+        edit_menu.addAction(self.redo_action)
+        self.addAction(self.redo_action)
+
         toolbar = QToolBar("Main")
         toolbar.setObjectName("Main")
         self.addToolBar(toolbar)
@@ -627,14 +663,52 @@ class MainWindow(QMainWindow):
         self.image_list.currentRowChanged.connect(self.select_image)
         self.canvas.boxes_changed.connect(self.refresh_boxes)
         self.canvas.boxes_changed.connect(self.auto_save_current)
+        self.canvas.edit_completed.connect(self.record_annotation_edit)
         self.canvas.selected_changed.connect(self.sync_selected_box)
         self.canvas.smart_clicked.connect(self.smart_click)
         self.canvas.smart_box_drawn.connect(self.smart_box)
         self.canvas.box_menu_requested.connect(self.show_box_menu)
         self.canvas.mode_toggle_requested.connect(self.toggle_mode)
 
+    def record_annotation_edit(self) -> None:
+        if self._loading_image:
+            return
+        self.history.record(self.canvas.boxes, self.labels)
+        self.update_history_actions()
+
+    def update_history_actions(self) -> None:
+        if self.undo_action is not None:
+            self.undo_action.setEnabled(self.history.can_undo)
+        if self.redo_action is not None:
+            self.redo_action.setEnabled(self.history.can_redo)
+
+    def undo_annotation_edit(self) -> None:
+        if not self.history.can_undo:
+            return
+        self.restore_annotation_snapshot(self.history.undo())
+
+    def redo_annotation_edit(self) -> None:
+        if not self.history.can_redo:
+            return
+        self.restore_annotation_snapshot(self.history.redo())
+
+    def restore_annotation_snapshot(self, snapshot: AnnotationSnapshot) -> None:
+        selected_label = self.canvas.current_label
+        self.labels = list(snapshot.labels)
+        self.canvas.boxes = [Box(box.label, box.x1, box.y1, box.x2, box.y2, box.score) for box in snapshot.boxes]
+        self.canvas.selected_index = 0 if self.canvas.boxes else -1
+        if selected_label not in self.labels:
+            selected_label = self.canvas.boxes[0].label if self.canvas.boxes else (self.labels[0] if self.labels else "object")
+        self.canvas.current_label = selected_label
+        self._refresh_classes(selected_label)
+        self.refresh_boxes()
+        self.update_history_actions()
+        self.canvas.update()
+        self.auto_save_current()
+
     def _refresh_classes(self, selected_label: str | None = None) -> None:
         selected_label = selected_label or self.canvas.current_label
+        self.class_list.blockSignals(True)
         self.class_list.clear()
         for label in self.labels:
             self.class_list.addItem(label)
@@ -643,6 +717,7 @@ class MainWindow(QMainWindow):
         else:
             row = self.labels.index("object") if "object" in self.labels else 0
         self.class_list.setCurrentRow(row)
+        self.class_list.blockSignals(False)
 
     def set_current_label(self, label: str) -> None:
         if label:
@@ -851,6 +926,8 @@ class MainWindow(QMainWindow):
                 boxes = []
                 self.update_save_target_label()
             self.canvas.set_boxes(boxes)
+            self.history.reset(self.canvas.boxes, self.labels)
+            self.update_history_actions()
         finally:
             self._loading_image = False
         position = f" ({self.image_index + 1}/{len(self.images)})" if self.images else ""
@@ -881,6 +958,8 @@ class MainWindow(QMainWindow):
         if boxes:
             self.canvas.selected_index = len(self.canvas.boxes) - 1
         self.refresh_boxes()
+        if boxes:
+            self.record_annotation_edit()
         self.auto_save_current()
         self.canvas.update()
         self.status.showMessage(f"Smart click added {len(boxes)} box(es)")
@@ -898,6 +977,7 @@ class MainWindow(QMainWindow):
         self.canvas.boxes.extend(boxes)
         self.canvas.selected_index = len(self.canvas.boxes) - 1
         self.refresh_boxes()
+        self.record_annotation_edit()
         self.auto_save_current()
         self.canvas.update()
         self.status.showMessage(f"Smart box added {len(boxes)} refined box(es)")
@@ -924,6 +1004,7 @@ class MainWindow(QMainWindow):
         self.canvas.current_label = label
         self.canvas.boxes_changed.emit()
         self.canvas.selected_changed.emit()
+        self.record_annotation_edit()
         self.canvas.update()
         self.status.showMessage(f"Changed box {index + 1} to {label}")
 
@@ -933,6 +1014,7 @@ class MainWindow(QMainWindow):
             del self.canvas.boxes[index]
             self.canvas.selected_index = min(index, len(self.canvas.boxes) - 1)
             self.refresh_boxes()
+            self.record_annotation_edit()
             self.auto_save_current()
             self.canvas.update()
 
@@ -948,6 +1030,7 @@ class MainWindow(QMainWindow):
         self.canvas.selected_index = len(self.canvas.boxes) - 1
         self.canvas.boxes_changed.emit()
         self.canvas.selected_changed.emit()
+        self.record_annotation_edit()
         self.canvas.update()
 
     def image_size_for_path(self, image_path: Path) -> tuple[int, int] | None:
@@ -971,6 +1054,8 @@ class MainWindow(QMainWindow):
             self.canvas.selected_index = len(self.canvas.boxes) - 1
         self.canvas.boxes_changed.emit()
         self.canvas.selected_changed.emit()
+        if copied_boxes:
+            self.record_annotation_edit()
         self.canvas.update()
 
     def toggle_label_display(self) -> None:
@@ -1130,6 +1215,7 @@ class MainWindow(QMainWindow):
             self.canvas.current_label = new_label
         self._refresh_classes(new_label)
         self.refresh_boxes()
+        self.record_annotation_edit()
         self.auto_save_current()
         self.canvas.update()
         self.status.showMessage(f"Renamed class {old_label} to {new_label}")
@@ -1156,6 +1242,7 @@ class MainWindow(QMainWindow):
             self.canvas.current_label = fallback_label
         self._refresh_classes(fallback_label)
         self.refresh_boxes()
+        self.record_annotation_edit()
         self.auto_save_current()
         self.canvas.update()
         self.status.showMessage(f"Deleted class {label}")

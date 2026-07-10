@@ -3,7 +3,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QSlider, QToolBar
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QKeySequence, QPixmap
 from PySide6.QtCore import QPoint
 import cv2
 import numpy as np
@@ -130,6 +130,63 @@ def test_selected_box_label_can_be_changed():
     window.set_selected_box_label("car")
 
     assert window.canvas.boxes[0].label == "car"
+    window.close()
+
+
+def test_edit_menu_exposes_undo_redo_shortcuts():
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+
+    assert window.undo_action is not None
+    assert window.redo_action is not None
+    assert window.undo_action.shortcut().matches(QKeySequence(QKeySequence.StandardKey.Undo)) == QKeySequence.SequenceMatch.ExactMatch
+    assert window.redo_action.shortcut().matches(QKeySequence(QKeySequence.StandardKey.Redo)) == QKeySequence.SequenceMatch.ExactMatch
+    assert not window.undo_action.isEnabled()
+    assert not window.redo_action.isEnabled()
+    window.close()
+
+
+def test_undo_and_redo_restore_boxes_and_autosave(tmp_path):
+    image_path = tmp_path / "one.jpg"
+    label_path = tmp_path / "one.xml"
+    cv2.imwrite(str(image_path), np.zeros((80, 120, 3), dtype=np.uint8))
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+
+    window.open_image_path(image_path)
+    window.set_save_target(label_path)
+    window.canvas.boxes = [Box("car", 10, 12, 50, 60)]
+    window.canvas.selected_index = 0
+    window.record_annotation_edit()
+    window.duplicate_selected_box()
+
+    assert window.undo_action.isEnabled()
+    window.undo_annotation_edit()
+    assert window.canvas.boxes == [Box("car", 10, 12, 50, 60)]
+    assert window.redo_action.isEnabled()
+    assert "<name>car</name>" in label_path.read_text(encoding="utf-8")
+    assert label_path.read_text(encoding="utf-8").count("<object>") == 1
+
+    window.redo_annotation_edit()
+    assert len(window.canvas.boxes) == 2
+    assert label_path.read_text(encoding="utf-8").count("<object>") == 2
+    window.close()
+
+
+def test_keyboard_move_records_undo_history():
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    window.canvas.pixmap = QPixmap(120, 80)
+    window.canvas.boxes = [Box("car", 10, 12, 50, 60)]
+    window.canvas.selected_index = 0
+    window.history.reset(window.canvas.boxes, window.labels)
+
+    assert window.canvas.move_selected_box(1, 0)
+    window.canvas.edit_completed.emit()
+
+    assert window.undo_action.isEnabled()
+    window.undo_annotation_edit()
+    assert window.canvas.boxes == [Box("car", 10, 12, 50, 60)]
     window.close()
 
 
