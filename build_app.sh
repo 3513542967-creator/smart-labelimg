@@ -17,6 +17,7 @@ mkdir -p release
 rm -f "$ZIP_PATH" "$ZIP_PATH.sha256"
 ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
 shasum -a 256 "$ZIP_PATH" > "$ZIP_PATH.sha256"
+./scripts/verify_macos_release.sh
 
 echo "Build complete:"
 echo "  $APP_PATH"

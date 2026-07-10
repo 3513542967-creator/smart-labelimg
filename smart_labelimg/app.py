@@ -1548,6 +1548,9 @@ class MainWindow(QMainWindow):
 def main() -> int:
     app = QApplication(sys.argv)
     window = MainWindow()
+    if os.environ.get("SMART_LABELIMG_SMOKE_EXIT") == "1":
+        window.close()
+        return 0
     window.show()
     return app.exec()
 
