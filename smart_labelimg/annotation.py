@@ -53,6 +53,18 @@ def yolo_path_for_image(image_path: Path) -> Path:
     return image_path.with_suffix(".txt")
 
 
+def yolo_classes_path_for_annotation(path: Path) -> Path:
+    return path.parent / "classes.txt"
+
+
+def load_yolo_classes(path: Path) -> list[str] | None:
+    classes_path = yolo_classes_path_for_annotation(path)
+    if not classes_path.exists():
+        return None
+    labels = [line.strip() for line in classes_path.read_text(encoding="utf-8").splitlines()]
+    return [label for label in labels if label]
+
+
 def voc_path_for_image(image_path: Path) -> Path:
     return image_path.with_suffix(".xml")
 
@@ -110,7 +122,7 @@ def load_yolo(path: Path, labels: list[str], image_size: tuple[int, int]) -> lis
             continue
         class_id = int(float(parts[0]))
         if class_id < 0 or class_id >= len(labels):
-            continue
+            raise ValueError(f"YOLO class id {class_id} is not present in classes.txt for {path.name}")
         cx, cy, bw, bh = map(float, parts[1:])
         box_width = bw * width
         box_height = bh * height

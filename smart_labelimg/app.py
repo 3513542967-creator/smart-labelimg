@@ -40,6 +40,7 @@ from smart_labelimg.annotation import (
     find_annotation_path,
     infer_format_from_path,
     load_annotation,
+    load_yolo_classes,
     voc_path_for_image,
     yolo_path_for_image,
 )
@@ -552,6 +553,7 @@ class MainWindow(QMainWindow):
         self.annotation_format = self._settings_annotation_format()
         self._loading_image = False
         self._saving_annotation = False
+        self._annotation_load_error = False
         self.save_coordinator = SaveCoordinator()
         self.save_state = SaveState.SAVED
         self.loaded_fingerprints: dict[Path, str | None] = {}
@@ -645,7 +647,7 @@ class MainWindow(QMainWindow):
         hidden_shortcuts = [
             ("Zoom In", lambda: self.add_zoom(10), "Ctrl++"),
             ("Zoom Out", lambda: self.add_zoom(-10), "Ctrl+-"),
-            ("Fit", self.fit_window, "Ctrl+F"),
+            ("Fit", self.fit_window, "Ctrl+0"),
             ("Save", self.save_current, QKeySequence.StandardKey.Save),
             ("Accept Propagation Candidates", self.accept_propagation_candidates, "Return"),
             ("Edit Mode", lambda: self.set_mode("edit"), "Ctrl+J"),
@@ -658,7 +660,7 @@ class MainWindow(QMainWindow):
         self._register_parity_action("square", "Square Boxes", self.toggle_square_drawing, "Shift+W", view_menu)
         self._register_parity_action("show_boxes", "Show/Hide Boxes", self.toggle_boxes_display, "Ctrl+B", view_menu)
         self._register_parity_action("fit_width", "Fit Width", self.fit_width, "Ctrl+Shift+F", view_menu)
-        self._register_parity_action("original_size", "Original Size", self.original_size, "Ctrl+0", view_menu)
+        self._register_parity_action("original_size", "Original Size", self.original_size, "Ctrl+1", view_menu)
         self._register_parity_action("brightness_up", "Brightness +", lambda: self.adjust_brightness(10), "Ctrl+]", view_menu)
         self._register_parity_action("brightness_down", "Brightness -", lambda: self.adjust_brightness(-10), "Ctrl+[", view_menu)
         self._register_parity_action("brightness_reset", "Brightness Reset", self.reset_brightness, "Ctrl+Alt+0", view_menu)
@@ -1017,6 +1019,7 @@ class MainWindow(QMainWindow):
 
     def load_image_with_label(self, image_path: Path, label_path: Path | None = None) -> None:
         self.current_image = image_path
+        self._annotation_load_error = False
         self.propagation_candidates = ()
         self.canvas.candidate_boxes = ()
         self._loading_image = True
@@ -1040,7 +1043,19 @@ class MainWindow(QMainWindow):
             if resolved_label_path is not None:
                 self.annotation_format = infer_format_from_path(resolved_label_path)
                 self.set_annotation_format(self.annotation_format)
-                boxes = load_annotation(resolved_label_path, self.labels, self.image_size)
+                if self.annotation_format == AnnotationFormat.YOLO:
+                    loaded_labels = load_yolo_classes(resolved_label_path)
+                    if loaded_labels:
+                        self.labels = loaded_labels
+                        self._refresh_classes(self.canvas.current_label)
+                try:
+                    boxes = load_annotation(resolved_label_path, self.labels, self.image_size)
+                except ValueError as exc:
+                    self.status.showMessage(str(exc))
+                    self.save_state = SaveState.FAILED
+                    self._annotation_load_error = True
+                    self.current_label_path = None
+                    boxes = []
             else:
                 boxes = []
                 self.update_save_target_label()
@@ -1085,11 +1100,18 @@ class MainWindow(QMainWindow):
             return
         result = propagate_boxes(previous, self.canvas.image_array, previous_boxes, self.backend)
         if result.committed:
+            before_boxes = list(self.canvas.boxes)
             self.canvas.boxes.extend(result.committed)
             self.canvas.selected_index = len(self.canvas.boxes) - 1
-            self.canvas.boxes_changed.emit()
+            self.refresh_boxes()
             self.canvas.selected_changed.emit()
             self.record_annotation_edit()
+            if not self.save_current():
+                self.canvas.boxes = before_boxes
+                self.history.undo()
+                self.refresh_boxes()
+                self.canvas.update()
+                return
             self.canvas.update()
             self.status.showMessage(f"Smart next propagated {len(result.committed)} box(es)")
             return
@@ -1351,6 +1373,9 @@ class MainWindow(QMainWindow):
     def save_current(self, show_status: bool = True) -> bool:
         if not self.current_image or not self.image_size:
             return True
+        if self._annotation_load_error:
+            self.status.showMessage("Save blocked: annotation failed to load safely")
+            return False
         label_path = self.current_save_path()
         if label_path is None:
             return True
@@ -1443,6 +1468,9 @@ class MainWindow(QMainWindow):
     def rename_class(self, old_label: str, new_label: str) -> bool:
         old_label = old_label.strip()
         new_label = new_label.strip()
+        if self._yolo_schema_locked():
+            self.status.showMessage("YOLO class order is locked; add new classes instead of renaming")
+            return False
         if not old_label or not new_label or old_label not in self.labels:
             return False
         if new_label != old_label and new_label in self.labels:
@@ -1471,6 +1499,9 @@ class MainWindow(QMainWindow):
 
     def delete_class(self, label: str) -> bool:
         label = label.strip()
+        if self._yolo_schema_locked():
+            self.status.showMessage("YOLO class order is locked; deleting classes can corrupt class ids")
+            return False
         if not label or label not in self.labels or len(self.labels) <= 1:
             return False
         self.labels.remove(label)
@@ -1495,6 +1526,14 @@ class MainWindow(QMainWindow):
         self.canvas.update()
         self.status.showMessage(f"Deleted class {label}")
         return True
+
+    def _yolo_schema_locked(self) -> bool:
+        if self.current_image is None:
+            return False
+        path = self.current_save_path()
+        if path is not None:
+            return path.suffix.lower() == ".txt"
+        return self.annotation_format == AnnotationFormat.YOLO
 
     def rename_current_class_dialog(self) -> None:
         item = self.class_list.currentItem()

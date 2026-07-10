@@ -154,7 +154,8 @@ run_windows.bat
 - `Ctrl+Shift+P` on Windows/Linux or `Cmd+Shift+P` on macOS: show/hide label text.
 - `Ctrl++` / `Ctrl+-` on Windows/Linux or `Cmd++` / `Cmd+-` on macOS: zoom with LabelImg-style cursor-relative positioning.
 - `Ctrl` / `Cmd` + mouse wheel: zoom with LabelImg-style cursor-relative positioning.
-- `Ctrl+F` on Windows/Linux or `Cmd+F` on macOS: fit image to window.
+- `Ctrl+0` on Windows/Linux or `Cmd+0` on macOS: fit image to window.
+- `Ctrl+1` on Windows/Linux or `Cmd+1` on macOS: original size.
 - `Ctrl+J` on Windows/Linux or `Cmd+J` on macOS: edit/select mode.
 - `Ctrl+S` on Windows/Linux or `Cmd+S` on macOS: save.
 

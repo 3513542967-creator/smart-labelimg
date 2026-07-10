@@ -349,6 +349,57 @@ def test_open_label_folder_matches_current_folder_image(tmp_path):
     window.close()
 
 
+def test_yolo_classes_file_is_loaded_before_annotations(tmp_path):
+    image_path = tmp_path / "one.jpg"
+    label_path = tmp_path / "one.txt"
+    cv2.imwrite(str(image_path), np.zeros((80, 120, 3), dtype=np.uint8))
+    (tmp_path / "classes.txt").write_text("zebra\ncustom_car\n", encoding="utf-8")
+    label_path.write_text("1 0.250000 0.450000 0.333333 0.600000\n", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+
+    window.open_image_path(image_path)
+    window.load_label_source(label_path)
+
+    assert window.labels == ["zebra", "custom_car"]
+    assert window.canvas.boxes[0].label == "custom_car"
+    window.close()
+
+
+def test_unknown_yolo_class_id_blocks_autosave_overwrite(tmp_path):
+    image_path = tmp_path / "one.jpg"
+    label_path = tmp_path / "one.txt"
+    cv2.imwrite(str(image_path), np.zeros((80, 120, 3), dtype=np.uint8))
+    label_path.write_text("9 0.250000 0.450000 0.333333 0.600000\n", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+
+    window.open_image_path(image_path)
+    window.load_label_source(label_path)
+    window.canvas.boxes = [Box("car", 10, 12, 50, 60)]
+
+    assert not window.save_current()
+    assert label_path.read_text(encoding="utf-8").startswith("9 ")
+    window.close()
+
+
+def test_yolo_class_schema_rename_and_delete_are_blocked(tmp_path):
+    image_path = tmp_path / "one.jpg"
+    label_path = tmp_path / "one.txt"
+    cv2.imwrite(str(image_path), np.zeros((80, 120, 3), dtype=np.uint8))
+    save_yolo(label_path, [Box("car", 10, 12, 50, 60)], ["object", "person", "vehicle", "car"], (120, 80))
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+
+    window.open_image_path(image_path)
+    window.load_label_source(label_path)
+
+    assert not window.rename_class("car", "sedan")
+    assert not window.delete_class("car")
+    assert "car" in window.labels
+    window.close()
+
+
 def test_save_target_folder_autosaves_annotation_changes(tmp_path):
     image_folder = tmp_path / "images"
     label_folder = tmp_path / "labels"

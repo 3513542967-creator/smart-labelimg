@@ -68,6 +68,7 @@ class SaveCoordinator:
                     backups[path] = backup
                 os.replace(staged[path], path)
                 replaced.append(path)
+                self._fsync_directory(path.parent)
 
             fingerprints = {path: value for path in paths if (value := self.fingerprint(path)) is not None}
             return SaveResult(SaveState.SAVED, fingerprints)
@@ -114,3 +115,14 @@ class SaveCoordinator:
             return SaveResult(SaveState.FAILED, {}, error=str(exc))
         finally:
             serialized.unlink(missing_ok=True)
+
+    @staticmethod
+    def _fsync_directory(path: Path) -> None:
+        try:
+            descriptor = os.open(path, os.O_RDONLY)
+        except OSError:
+            return
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)

@@ -5,6 +5,7 @@ from smart_labelimg.annotation import (
     Box,
     find_annotation_path,
     load_annotation,
+    load_yolo_classes,
     load_voc_xml,
     load_yolo,
     save_annotation,
@@ -27,6 +28,25 @@ def test_yolo_roundtrip_preserves_label_and_box(tmp_path: Path):
     assert loaded[0].y1 == 20
     assert loaded[0].x2 == 50
     assert loaded[0].y2 == 80
+
+
+def test_load_yolo_classes_reads_labelimg_classes_file(tmp_path: Path):
+    label_path = tmp_path / "image.txt"
+    (tmp_path / "classes.txt").write_text("zebra\ncar\n", encoding="utf-8")
+
+    assert load_yolo_classes(label_path) == ["zebra", "car"]
+
+
+def test_load_yolo_unknown_class_id_blocks_unsafe_load(tmp_path: Path):
+    label_path = tmp_path / "image.txt"
+    label_path.write_text("5 0.5 0.5 0.2 0.2\n", encoding="utf-8")
+
+    try:
+        load_yolo(label_path, ["car"], image_size=(100, 100))
+    except ValueError as exc:
+        assert "class id 5" in str(exc)
+    else:
+        raise AssertionError("unknown YOLO class id should fail")
 
 
 def test_voc_xml_roundtrip_preserves_label_and_box(tmp_path: Path):
