@@ -7,8 +7,12 @@ from pathlib import Path
 root = Path.cwd()
 datas = []
 mobile_sam_checkpoint = root / "models" / "mobile_sam.pt"
-if mobile_sam_checkpoint.exists():
-    datas.append((str(mobile_sam_checkpoint), "models"))
+if not mobile_sam_checkpoint.exists():
+    raise SystemExit("models/mobile_sam.pt is required for the macOS release build")
+datas.append((str(mobile_sam_checkpoint), "models"))
+app_icon = root / "assets" / "AppIcon.icns"
+if not app_icon.exists():
+    raise SystemExit("assets/AppIcon.icns is required for the macOS release build")
 
 
 a = Analysis(
@@ -57,7 +61,7 @@ exe = EXE(
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
-    target_arch=None,
+    target_arch="arm64",
     codesign_identity=None,
     entitlements_file=None,
 )
@@ -74,10 +78,13 @@ if sys.platform == "darwin":
     app = BUNDLE(
         coll,
         name="Smart LabelImg.app",
-        icon=None,
+        icon=str(app_icon),
         bundle_identifier="com.smartlabelimg.app",
         info_plist={
             "NSHighResolutionCapable": True,
             "CFBundleDisplayName": "Smart LabelImg",
+            "CFBundleShortVersionString": "0.1.0",
+            "CFBundleVersion": "0.1.0",
+            "LSMinimumSystemVersion": "12.0",
         },
     )

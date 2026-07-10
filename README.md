@@ -6,21 +6,23 @@ The main workflow is MobileSAM-assisted: draw around an object and MobileSAM tig
 
 ## Download And Run
 
-For end users, use the release file for your system:
+For macOS Apple Silicon users, download:
+
+```text
+Smart-LabelImg-macOS-Apple-Silicon.zip
+```
 
 1. Download the release zip for your system.
 2. Unzip it.
-3. Open the app:
-   - macOS: `Smart LabelImg.app`
-   - Windows: `Smart LabelImg\Smart LabelImg.exe`
-   - Linux: `Smart LabelImg`
+3. Open `Smart LabelImg.app`.
 
 No Python commands are needed for end users. The packaged app includes MobileSAM
 and `models/mobile_sam.pt`, so smart box refinement works without a separate
 model download.
 
 On macOS, if the system blocks the app the first time, right-click
-`Smart LabelImg.app` and choose `Open`.
+`Smart LabelImg.app` and choose `Open`. This GitHub build is intended for direct
+download; App Store distribution and notarization are future work.
 
 On Windows, download `Smart-LabelImg-MobileSAM-Windows-x64.zip`, unzip it, and
 double-click `Smart LabelImg.exe`. See
@@ -38,9 +40,16 @@ See the full LabelImg comparison and operating manual:
 macOS:
 
 ```bash
-./setup.sh
-.venv/bin/python -m pip install -r requirements-ai.txt -r requirements-build.txt
+conda activate ai
 ./build_app.sh
+```
+
+The macOS build creates:
+
+```text
+dist/Smart LabelImg.app
+release/Smart-LabelImg-macOS-Apple-Silicon.zip
+release/Smart-LabelImg-macOS-Apple-Silicon.zip.sha256
 ```
 
 Windows PowerShell:
@@ -93,6 +102,9 @@ run_windows.bat
 - Save and load YOLO `.txt` and Pascal VOC `.xml` labels.
 - Choose the save format and save target file or folder from the top toolbar.
 - Automatically save annotation changes to the selected save target.
+- Writes YOLO `classes.txt` next to YOLO labels in LabelImg-compatible order.
+- Uses safe save checks so navigation stays on the current image if saving fails.
+- Undo/redo annotation edits.
 - Draw boxes manually in normal LabelImg mode.
 - Select, move, and resize boxes with LabelImg-style controls.
 - Draw rough boxes in smart mode and let MobileSAM refine them.
@@ -103,6 +115,7 @@ run_windows.bat
 - Move the selected box with arrow keys.
 - Use the image list to jump through an opened folder.
 - Duplicate the selected box and copy boxes from the previous image.
+- Smart-next propagation from the previous image with automatic local refinement.
 - Toggle label text display, zoom, fit window, and mark images as verified.
 - Use the same class-name workflow as YOLO datasets.
 - Keeps the default UI simple: object, person, vehicle, car, truck, bus, bike, motorcycle.
@@ -129,9 +142,11 @@ run_windows.bat
 - Select a box, then click a class name in the left panel to change that box label.
 - Right-click an existing box to open class-change and delete actions.
 - Arrow keys move the selected box by 1 px.
-- `Shift`: toggle between smart mode and normal LabelImg mode.
 - `W`: switch to normal drawing mode.
-- `Space`: switch to smart mode.
+- `S`: switch to smart mode.
+- `Space`: verify / unverify the current image.
+- `Shift+D`: smart-next to the next image and propagate boxes from the previous image.
+- `Return`: accept low-confidence propagated candidate boxes.
 - `A` / `D`: previous / next image.
 - `←` / `→`: toolbar arrows for previous / next image.
 - `Ctrl+D` on Windows/Linux or `Cmd+D` on macOS: duplicate selected box.
@@ -140,6 +155,7 @@ run_windows.bat
 - `Ctrl++` / `Ctrl+-` on Windows/Linux or `Cmd++` / `Cmd+-` on macOS: zoom with LabelImg-style cursor-relative positioning.
 - `Ctrl` / `Cmd` + mouse wheel: zoom with LabelImg-style cursor-relative positioning.
 - `Ctrl+F` on Windows/Linux or `Cmd+F` on macOS: fit image to window.
+- `Ctrl+J` on Windows/Linux or `Cmd+J` on macOS: edit/select mode.
 - `Ctrl+S` on Windows/Linux or `Cmd+S` on macOS: save.
 
 ## Default Classes
@@ -190,7 +206,13 @@ python verify_demo.py
 python verify_app.py
 python verify_locateanything.py
 python verify_sam_click.py
+./scripts/verify_macos_release.sh
 ```
+
+## Third Party Notices
+
+See `THIRD_PARTY_NOTICES.md` for bundled dependency and MobileSAM model
+attribution notes.
 
 Expected evidence from `verify_demo.py`:
 

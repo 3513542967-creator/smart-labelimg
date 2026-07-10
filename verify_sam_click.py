@@ -4,7 +4,7 @@ from urllib.request import urlretrieve
 import cv2
 
 from smart_labelimg.ai_backend import SamClickBackend
-from smart_labelimg.app import SAM_CHECKPOINT
+from smart_labelimg.app import MOBILE_SAM_CHECKPOINT
 from smart_labelimg.annotation import save_yolo
 
 
@@ -14,7 +14,7 @@ if not image_path.exists():
     urlretrieve("https://raw.githubusercontent.com/ultralytics/yolov5/master/data/images/zidane.jpg", image_path)
 
 image = cv2.cvtColor(cv2.imread(str(image_path)), cv2.COLOR_BGR2RGB)
-backend = SamClickBackend(str(SAM_CHECKPOINT))
+backend = SamClickBackend(str(MOBILE_SAM_CHECKPOINT))
 
 # A point inside the main person in the test image.
 boxes = backend.detect_from_click(image, x=980, y=300, label="person")
@@ -27,7 +27,7 @@ for box in boxes:
 annotated_path = root / "examples" / "street_test_sam_click.png"
 cv2.imwrite(str(annotated_path), cv2.cvtColor(annotated, cv2.COLOR_RGB2BGR))
 
-print(f"checkpoint={SAM_CHECKPOINT.exists()} size_mb={SAM_CHECKPOINT.stat().st_size / (1024 ** 2):.1f}")
+print(f"checkpoint={MOBILE_SAM_CHECKPOINT.exists()} size_mb={MOBILE_SAM_CHECKPOINT.stat().st_size / (1024 ** 2):.1f}")
 print(f"image={image_path}")
 print(f"boxes={len(boxes)}")
 for box in boxes:
