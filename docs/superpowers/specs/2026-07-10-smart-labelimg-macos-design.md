@@ -290,6 +290,8 @@ Multiple objects are refined concurrently within a bounded task group. Image dec
 - Toolbar: open, annotation folder, format, three modes, navigation, propagation, and verification.
 - Bottom status area: image dimensions, zoom, active class, save state, SAM state, and destination.
 
+The application uses a custom, professionally rendered macOS icon that remains recognizable from 16 to 1024 pixels. Its visual language combines a precise bounding-box symbol with one restrained local-AI accent; it contains no text, Apple trademark, or dataset-specific object that would narrow the product's meaning. The icon is used consistently in the Dock, Finder, About window, welcome screen, direct-download bundle, and future App Store listing.
+
 Basic mode hides class migration, VOC metadata, color customization, and diagnostic details. Professional mode exposes them without changing dataset behavior.
 
 ### 14.2 Onboarding
@@ -433,6 +435,7 @@ The production milestone is accepted only when:
 - Exact previous-box copy and intelligent propagation are separate, predictable commands.
 - Low-confidence smart results cannot silently become final annotations under default settings.
 - The app works fully offline after installation and contains the SAM model.
+- The signed bundle contains the custom multi-resolution application icon, and its 16-pixel rendition remains clear and recognizable.
 - The manual workflow remains functional when the model is deliberately removed or made to fail in a test build.
 - The baseline performance targets are measured and met.
 - The sandboxed archive validates, direct-download notarization succeeds, and the App Store configuration contains no known architectural blocker.
