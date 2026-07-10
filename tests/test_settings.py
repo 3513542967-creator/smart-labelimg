@@ -28,3 +28,11 @@ def test_malformed_setting_values_recover_with_defaults(tmp_path):
     store = SettingsStore(path)
 
     assert store.load() == AppSettings()
+
+
+def test_malformed_scalar_setting_values_recover_with_defaults(tmp_path):
+    path = tmp_path / "settings.json"
+    path.write_text('{"brightness": "oops"}', encoding="utf-8")
+    store = SettingsStore(path)
+
+    assert store.load() == AppSettings()

@@ -31,7 +31,16 @@ class SettingsStore:
         allowed = {field.name for field in fields(AppSettings)}
         values = {key: value for key, value in raw.items() if key in allowed}
         try:
+            for key in ("last_image_dir", "annotation_format", "default_class"):
+                if key in values and not isinstance(values[key], str):
+                    raise ValueError(key)
+            if "brightness" in values:
+                if not isinstance(values["brightness"], int):
+                    raise ValueError("brightness")
+                values["brightness"] = max(-100, min(100, values["brightness"]))
             if "recent_folders" in values:
+                if not isinstance(values["recent_folders"], list | tuple):
+                    raise ValueError("recent_folders")
                 values["recent_folders"] = tuple(str(item) for item in values["recent_folders"])
             return AppSettings(**values)
         except (TypeError, ValueError):
