@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QToolBar,
     QVBoxLayout,
     QWidget,
+    QAbstractItemView,
 )
 
 from smart_labelimg.ai_backend import ClassicalVisionBackend, SamClickBackend
@@ -74,6 +75,7 @@ class ImageCanvas(QWidget):
         self.boxes: list[Box] = []
         self.candidate_boxes: tuple[Box, ...] = ()
         self.selected_index = -1
+        self.selected_indices: set[int] = set()
         self.mode = "smart"
         self.current_label = "object"
         self.drag_start: QPoint | None = None
@@ -107,6 +109,7 @@ class ImageCanvas(QWidget):
         self.boxes = []
         self.candidate_boxes = ()
         self.selected_index = -1
+        self.selected_indices = set()
         self.pan_x = 0.0
         self.pan_y = 0.0
         self.update()
@@ -135,6 +138,7 @@ class ImageCanvas(QWidget):
         self.boxes = boxes
         self.candidate_boxes = ()
         self.selected_index = 0 if boxes else -1
+        self.selected_indices = {0} if boxes else set()
         self.boxes_changed.emit()
         self.selected_changed.emit()
         self.update()
@@ -157,27 +161,49 @@ class ImageCanvas(QWidget):
         return None
 
     def move_selected_box(self, dx: int, dy: int) -> bool:
-        if not (0 <= self.selected_index < len(self.boxes)):
+        selected = self.valid_selected_indices()
+        if not selected:
             return False
         bounds = self.image_bounds()
         if bounds is None:
             return False
         image_width, image_height = bounds
-        box = self.boxes[self.selected_index].normalized()
-        box_width = box.width
-        box_height = box.height
-        max_x1 = max(0, image_width - 1 - box_width)
-        max_y1 = max(0, image_height - 1 - box_height)
-        new_x1 = min(max(box.x1 + dx, 0), max_x1)
-        new_y1 = min(max(box.y1 + dy, 0), max_y1)
-        moved = Box(box.label, new_x1, new_y1, new_x1 + box_width, new_y1 + box_height, box.score)
-        if moved == box:
+        selected_boxes = [self.boxes[index].normalized() for index in selected]
+        min_x1 = min(box.x1 for box in selected_boxes)
+        min_y1 = min(box.y1 for box in selected_boxes)
+        max_x2 = max(box.x2 for box in selected_boxes)
+        max_y2 = max(box.y2 for box in selected_boxes)
+        dx = min(max(dx, -min_x1), image_width - 1 - max_x2)
+        dy = min(max(dy, -min_y1), image_height - 1 - max_y2)
+        if dx == 0 and dy == 0:
             return True
-        self.boxes[self.selected_index] = moved
+        for index in selected:
+            box = self.boxes[index].normalized()
+            self.boxes[index] = Box(box.label, box.x1 + dx, box.y1 + dy, box.x2 + dx, box.y2 + dy, box.score)
         self.boxes_changed.emit()
         self.selected_changed.emit()
         self.update()
         return True
+
+    def valid_selected_indices(self) -> list[int]:
+        selected = {index for index in self.selected_indices if 0 <= index < len(self.boxes)}
+        if 0 <= self.selected_index < len(self.boxes):
+            selected.add(self.selected_index)
+        self.selected_indices = selected
+        return sorted(selected)
+
+    def set_single_selection(self, index: int) -> None:
+        self.selected_index = index
+        self.selected_indices = {index} if 0 <= index < len(self.boxes) else set()
+
+    def select_all_boxes(self) -> None:
+        self.selected_indices = set(range(len(self.boxes)))
+        self.selected_index = 0 if self.boxes else -1
+        self.selected_changed.emit()
+        self.update()
+
+    def is_box_selected(self, index: int) -> bool:
+        return index in self.valid_selected_indices()
 
     def selected_box(self) -> Box | None:
         if 0 <= self.selected_index < len(self.boxes):
@@ -320,7 +346,7 @@ class ImageCanvas(QWidget):
         if not self.show_boxes:
             return
         for index, box in enumerate(self.boxes):
-            color = QColor("#00e676") if index == self.selected_index else QColor("#ffca28")
+            color = QColor("#00e676") if self.is_box_selected(index) else QColor("#ffca28")
             painter.setPen(QPen(color, 2))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             box_rect = self.image_to_widget_rect(box)
@@ -366,7 +392,7 @@ class ImageCanvas(QWidget):
 
         clicked_index = self.box_at(event.position().toPoint())
         if event.button() == Qt.MouseButton.RightButton and clicked_index >= 0:
-            self.selected_index = clicked_index
+            self.set_single_selection(clicked_index)
             self.selected_changed.emit()
             self.update()
             self.box_menu_requested.emit(clicked_index, event.globalPosition().toPoint())
@@ -388,7 +414,7 @@ class ImageCanvas(QWidget):
             return
 
         if clicked_index >= 0:
-            self.selected_index = clicked_index
+            self.set_single_selection(clicked_index)
             self.selected_changed.emit()
             self.update()
             self.drag_action = "move"
@@ -485,7 +511,7 @@ class ImageCanvas(QWidget):
         box = Box(self.current_label, x1, y1, x2, y2).normalized()
         if action == "draw" and box.width >= 3 and box.height >= 3:
             self.boxes.append(box)
-            self.selected_index = len(self.boxes) - 1
+            self.set_single_selection(len(self.boxes) - 1)
             self.boxes_changed.emit()
             self.selected_changed.emit()
             self.edit_completed.emit()
@@ -496,7 +522,7 @@ class ImageCanvas(QWidget):
             return
         clicked_index = self.box_at(event.position().toPoint())
         if clicked_index >= 0:
-            self.selected_index = clicked_index
+            self.set_single_selection(clicked_index)
             self.selected_changed.emit()
             self.update()
             self.box_menu_requested.emit(clicked_index, event.globalPosition().toPoint())
@@ -614,6 +640,17 @@ class MainWindow(QMainWindow):
         self.redo_action.triggered.connect(self.redo_annotation_edit)
         edit_menu.addAction(self.redo_action)
         self.addAction(self.redo_action)
+        select_all_action = QAction("Select All Boxes", self)
+        select_all_action.setShortcuts(
+            [
+                QKeySequence(QKeySequence.StandardKey.SelectAll),
+                QKeySequence("Ctrl+A"),
+            ]
+        )
+        select_all_action.triggered.connect(self.select_all_boxes)
+        edit_menu.addAction(select_all_action)
+        self.addAction(select_all_action)
+        self.actions_by_name["select_all"] = select_all_action
         view_menu = self.menuBar().addMenu("View")
         tools_menu = self.menuBar().addMenu("Tools")
 
@@ -673,6 +710,7 @@ class MainWindow(QMainWindow):
                 "verify": "Space",
                 "edit": "Ctrl+J",
                 "smart_next": "Shift+D",
+                "select_all": "Ctrl+A",
             }
         )
         toolbar.addSeparator()
@@ -703,6 +741,7 @@ class MainWindow(QMainWindow):
         side_layout.addWidget(QLabel("Images"))
         side_layout.addWidget(self.image_list)
         side_layout.addWidget(QLabel("Boxes"))
+        self.box_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
         side_layout.addWidget(self.box_list)
 
         splitter = QSplitter()
@@ -1155,7 +1194,7 @@ class MainWindow(QMainWindow):
     def show_box_menu(self, index: int, global_pos: QPoint) -> None:
         if not (0 <= index < len(self.canvas.boxes)):
             return
-        self.canvas.selected_index = index
+        self.canvas.set_single_selection(index)
         menu = QMenu(self)
         class_menu = menu.addMenu("Change Class")
         for label in self.labels:
@@ -1179,10 +1218,15 @@ class MainWindow(QMainWindow):
         self.status.showMessage(f"Changed box {index + 1} to {label}")
 
     def delete_selected(self) -> None:
-        index = self.canvas.selected_index
-        if 0 <= index < len(self.canvas.boxes):
-            del self.canvas.boxes[index]
-            self.canvas.selected_index = min(index, len(self.canvas.boxes) - 1)
+        selected = self.canvas.valid_selected_indices()
+        if selected:
+            first = selected[0]
+            for index in sorted(selected, reverse=True):
+                del self.canvas.boxes[index]
+            self.canvas.selected_indices = set()
+            self.canvas.selected_index = min(first, len(self.canvas.boxes) - 1)
+            if self.canvas.selected_index >= 0:
+                self.canvas.selected_indices = {self.canvas.selected_index}
             self.refresh_boxes()
             self.record_annotation_edit()
             self.auto_save_current()
@@ -1197,7 +1241,7 @@ class MainWindow(QMainWindow):
         if bounds is not None:
             duplicated = duplicated.clipped(bounds)
         self.canvas.boxes.append(duplicated)
-        self.canvas.selected_index = len(self.canvas.boxes) - 1
+        self.canvas.set_single_selection(len(self.canvas.boxes) - 1)
         self.canvas.boxes_changed.emit()
         self.canvas.selected_changed.emit()
         self.record_annotation_edit()
@@ -1545,6 +1589,11 @@ class MainWindow(QMainWindow):
 
     def sync_selected_box(self) -> None:
         self.box_list.blockSignals(True)
+        self.box_list.clearSelection()
+        for index in self.canvas.valid_selected_indices():
+            item = self.box_list.item(index)
+            if item is not None:
+                item.setSelected(True)
         self.box_list.setCurrentRow(self.canvas.selected_index)
         self.box_list.blockSignals(False)
         selected = self.canvas.selected_box()
@@ -1554,9 +1603,13 @@ class MainWindow(QMainWindow):
             self.class_list.blockSignals(False)
 
     def select_box(self, row: int) -> None:
-        self.canvas.selected_index = row
+        self.canvas.set_single_selection(row)
         self.canvas.selected_changed.emit()
         self.canvas.update()
+
+    def select_all_boxes(self) -> None:
+        self.canvas.select_all_boxes()
+        self.sync_selected_box()
 
     def add_class(self) -> None:
         label, ok = QInputDialog.getText(self, "Add class", "Class name:")

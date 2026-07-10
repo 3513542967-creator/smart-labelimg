@@ -147,6 +147,54 @@ def test_edit_menu_exposes_undo_redo_shortcuts():
     window.close()
 
 
+def test_select_all_boxes_action_uses_standard_shortcut():
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+
+    select_all = window.actions_by_name["select_all"]
+
+    assert select_all.shortcut().matches(QKeySequence(QKeySequence.StandardKey.SelectAll)) == QKeySequence.SequenceMatch.ExactMatch
+    window.close()
+
+
+def test_select_all_boxes_then_delete_removes_every_box():
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    window.canvas.pixmap = QPixmap(120, 80)
+    window.canvas.boxes = [
+        Box("car", 10, 12, 50, 60),
+        Box("person", 60, 10, 100, 70),
+    ]
+    window.refresh_boxes()
+
+    window.select_all_boxes()
+    window.delete_selected()
+
+    assert window.canvas.boxes == []
+    assert window.canvas.selected_index == -1
+    assert window.box_list.count() == 0
+    window.close()
+
+
+def test_select_all_boxes_move_together():
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    window.canvas.pixmap = QPixmap(120, 80)
+    window.canvas.boxes = [
+        Box("car", 10, 12, 50, 60),
+        Box("person", 60, 10, 100, 70),
+    ]
+
+    window.select_all_boxes()
+    assert window.canvas.move_selected_box(5, 3)
+
+    assert window.canvas.boxes == [
+        Box("car", 15, 15, 55, 63),
+        Box("person", 65, 13, 105, 73),
+    ]
+    window.close()
+
+
 def test_undo_and_redo_restore_boxes_and_autosave(tmp_path):
     image_path = tmp_path / "one.jpg"
     label_path = tmp_path / "one.xml"
