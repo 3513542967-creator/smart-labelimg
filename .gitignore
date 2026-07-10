@@ -21,6 +21,7 @@ release/
 Thumbs.db
 .idea/
 .vscode/
+.worktrees/
 
 # Large optional model/runtime assets
 models/sam_vit_b_01ec64.pth
