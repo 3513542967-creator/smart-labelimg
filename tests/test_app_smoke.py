@@ -375,6 +375,26 @@ def test_navigation_stays_on_current_image_after_save_failure(tmp_path, monkeypa
     window.close()
 
 
+def test_loaded_yolo_classes_conflict_blocks_save(tmp_path):
+    image_path = tmp_path / "one.jpg"
+    label_path = tmp_path / "one.txt"
+    classes_path = tmp_path / "classes.txt"
+    cv2.imwrite(str(image_path), np.zeros((80, 120, 3), dtype=np.uint8))
+    label_path.write_text("old annotation\n", encoding="utf-8")
+    classes_path.write_text("object\ncar\n", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    window.load_image_with_label(image_path, label_path)
+    classes_path.write_text("external\n", encoding="utf-8")
+    window.canvas.boxes = [Box("car", 10, 12, 50, 60)]
+
+    assert not window.save_current()
+    assert window.save_state is SaveState.CONFLICT
+    assert label_path.read_text(encoding="utf-8") == "old annotation\n"
+    assert classes_path.read_text(encoding="utf-8") == "external\n"
+    window.close()
+
+
 def test_duplicate_selected_box_adds_a_second_offset_box():
     app = QApplication.instance() or QApplication([])
     window = MainWindow()

@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from smart_labelimg.annotation import Box
 from smart_labelimg.save_coordinator import SaveCoordinator, SaveState
 
 
@@ -55,3 +56,48 @@ def test_failed_multi_file_save_rolls_back_and_cleans_temporary_files(tmp_path, 
     assert first.read_bytes() == b"first-old"
     assert second.read_bytes() == b"second-old"
     assert not list(tmp_path.glob(".smart-labelimg-*"))
+
+
+def test_yolo_annotation_save_writes_classes_in_same_transaction(tmp_path):
+    annotation = tmp_path / "image.txt"
+    classes = tmp_path / "classes.txt"
+    coordinator = SaveCoordinator()
+
+    result = coordinator.save_annotation_atomic(
+        annotation,
+        [Box("car", 10, 20, 30, 40)],
+        ["object", "car"],
+        (100, 100),
+        tmp_path / "image.jpg",
+    )
+
+    assert result.state is SaveState.SAVED
+    assert annotation.read_text(encoding="utf-8") == "1 0.200000 0.300000 0.200000 0.200000\n"
+    assert classes.read_text(encoding="utf-8") == "object\ncar\n"
+    assert set(result.fingerprints) == {annotation, classes}
+
+
+def test_classes_conflict_preserves_yolo_annotation_and_classes(tmp_path):
+    annotation = tmp_path / "image.txt"
+    classes = tmp_path / "classes.txt"
+    annotation.write_text("old annotation\n", encoding="utf-8")
+    classes.write_text("object\ncar\n", encoding="utf-8")
+    coordinator = SaveCoordinator()
+    coordinator.expected = {
+        annotation: coordinator.fingerprint(annotation),
+        classes: coordinator.fingerprint(classes),
+    }
+    classes.write_text("external\n", encoding="utf-8")
+
+    result = coordinator.save_annotation_atomic(
+        annotation,
+        [Box("car", 10, 20, 30, 40)],
+        ["object", "car"],
+        (100, 100),
+        tmp_path / "image.jpg",
+    )
+
+    assert result.state is SaveState.CONFLICT
+    assert result.conflicts == (classes,)
+    assert annotation.read_text(encoding="utf-8") == "old annotation\n"
+    assert classes.read_text(encoding="utf-8") == "external\n"

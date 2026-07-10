@@ -93,13 +93,20 @@ class SaveCoordinator:
         image_size: tuple[int, int],
         image_path: Path,
     ) -> SaveResult:
-        expected = self.expected.get(path, self.fingerprint(path))
         descriptor, name = tempfile.mkstemp(suffix=path.suffix)
         os.close(descriptor)
         serialized = Path(name)
         try:
             save_annotation(serialized, boxes, labels, image_size, image_path)
-            result = self.save_bytes({path: serialized.read_bytes()}, {path: expected})
+            files = {path: serialized.read_bytes()}
+            if path.suffix.lower() == ".txt":
+                classes_path = path.parent / "classes.txt"
+                classes_text = "\n".join(labels) + ("\n" if labels else "")
+                files[classes_path] = classes_text.encode("utf-8")
+            expected = {
+                destination: self.expected.get(destination, self.fingerprint(destination)) for destination in files
+            }
+            result = self.save_bytes(files, expected)
             if result.state is SaveState.SAVED:
                 self.expected.update(result.fingerprints)
             return result

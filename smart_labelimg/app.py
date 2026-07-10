@@ -839,6 +839,10 @@ class MainWindow(QMainWindow):
             if save_path is not None:
                 self.loaded_fingerprints[save_path] = self.save_coordinator.fingerprint(save_path)
                 self.save_coordinator.expected[save_path] = self.loaded_fingerprints[save_path]
+                if save_path.suffix.lower() == ".txt":
+                    classes_path = save_path.parent / "classes.txt"
+                    self.loaded_fingerprints[classes_path] = self.save_coordinator.fingerprint(classes_path)
+                    self.save_coordinator.expected[classes_path] = self.loaded_fingerprints[classes_path]
             if resolved_label_path is not None:
                 self.annotation_format = infer_format_from_path(resolved_label_path)
                 self.set_annotation_format(self.annotation_format)
