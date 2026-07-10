@@ -490,6 +490,84 @@ def test_copy_previous_boxes_loads_prior_image_annotations(tmp_path):
     window.close()
 
 
+class NoRefineBackend:
+    def refine_from_box(self, image, query_box, label):
+        return []
+
+
+def test_smart_next_action_uses_shift_d_shortcut():
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+
+    toolbar = window.findChild(QToolBar, "Main")
+    smart_next = next(action for action in toolbar.actions() if action.text() == "Smart →")
+
+    assert smart_next.shortcut().matches(QKeySequence("Shift+D")) == QKeySequence.SequenceMatch.ExactMatch
+    window.close()
+
+
+def test_smart_next_propagates_current_boxes_to_next_image_and_records_one_history_entry(tmp_path):
+    image_folder = tmp_path / "images"
+    image_folder.mkdir()
+    first_image = image_folder / "one.jpg"
+    second_image = image_folder / "two.jpg"
+    first = np.zeros((100, 140, 3), dtype=np.uint8)
+    second = first.copy()
+    first[30:60, 30:70] = (255, 255, 255)
+    second[34:64, 38:78] = (255, 255, 255)
+    cv2.imwrite(str(first_image), cv2.cvtColor(first, cv2.COLOR_RGB2BGR))
+    cv2.imwrite(str(second_image), cv2.cvtColor(second, cv2.COLOR_RGB2BGR))
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    window.backend = NoRefineBackend()
+    window.open_image_path(image_folder)
+    window.canvas.boxes = [Box("car", 30, 30, 70, 60)]
+
+    window.smart_next_image()
+
+    assert window.current_image == second_image
+    assert len(window.canvas.boxes) == 1
+    assert abs(window.canvas.boxes[0].x1 - 38) <= 1
+    assert abs(window.canvas.boxes[0].y1 - 34) <= 1
+    assert window.undo_action.isEnabled()
+    window.undo_annotation_edit()
+    assert window.canvas.boxes == []
+    window.close()
+
+
+def test_low_confidence_smart_next_candidates_are_visible_but_not_autosaved(tmp_path):
+    image_folder = tmp_path / "images"
+    image_folder.mkdir()
+    first_image = image_folder / "one.jpg"
+    second_image = image_folder / "two.jpg"
+    cv2.imwrite(str(first_image), np.zeros((80, 100, 3), dtype=np.uint8))
+    noise = np.indices((80, 100)).sum(axis=0).astype(np.uint8)
+    noise = np.stack([noise, np.roll(noise, 7, axis=1), np.roll(noise, 13, axis=0)], axis=2)
+    cv2.imwrite(str(second_image), cv2.cvtColor(noise, cv2.COLOR_RGB2BGR))
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    window.backend = NoRefineBackend()
+    window.open_image_path(image_folder)
+    window.canvas.boxes = [Box("car", 10, 10, 30, 30)]
+
+    window.smart_next_image()
+
+    assert window.current_image == second_image
+    assert window.canvas.boxes == []
+    assert len(window.canvas.candidate_boxes) == 1
+    assert len(window.propagation_candidates) == 1
+    assert window.propagation_candidates[0].requires_confirmation
+    assert not (image_folder / "two.txt").exists()
+
+    window.accept_propagation_candidates()
+
+    assert len(window.canvas.boxes) == 1
+    assert window.canvas.candidate_boxes == ()
+    assert len(window.propagation_candidates) == 0
+    assert (image_folder / "two.txt").exists()
+    window.close()
+
+
 def test_display_labels_and_zoom_controls_update_canvas():
     app = QApplication.instance() or QApplication([])
     window = MainWindow()

@@ -41,6 +41,7 @@ from smart_labelimg.annotation import (
 from smart_labelimg.history import AnnotationHistory, AnnotationSnapshot
 from smart_labelimg.labels import SIMPLE_LABELS
 from smart_labelimg.paths import resource_path
+from smart_labelimg.propagation import PropagationCandidate, propagate_boxes
 from smart_labelimg.save_coordinator import SaveCoordinator, SaveState
 
 
@@ -64,6 +65,7 @@ class ImageCanvas(QWidget):
         self.pixmap: QPixmap | None = None
         self.image_array: np.ndarray | None = None
         self.boxes: list[Box] = []
+        self.candidate_boxes: tuple[Box, ...] = ()
         self.selected_index = -1
         self.mode = "smart"
         self.current_label = "object"
@@ -93,6 +95,7 @@ class ImageCanvas(QWidget):
         qimage = QImage(rgb.data, width, height, width * 3, QImage.Format.Format_RGB888).copy()
         self.pixmap = QPixmap.fromImage(qimage)
         self.boxes = []
+        self.candidate_boxes = ()
         self.selected_index = -1
         self.pan_x = 0.0
         self.pan_y = 0.0
@@ -101,6 +104,7 @@ class ImageCanvas(QWidget):
 
     def set_boxes(self, boxes: list[Box]) -> None:
         self.boxes = boxes
+        self.candidate_boxes = ()
         self.selected_index = 0 if boxes else -1
         self.boxes_changed.emit()
         self.selected_changed.emit()
@@ -308,6 +312,16 @@ class ImageCanvas(QWidget):
                         self.handle_radius * 2,
                         self.handle_radius * 2,
                     )
+        for candidate in self.candidate_boxes:
+            box_rect = self.image_to_widget_rect(candidate)
+            painter.setPen(QPen(QColor("#40c4ff"), 2, Qt.PenStyle.DashLine))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRect(box_rect)
+            if self.show_labels:
+                text = f"{candidate.label}?"
+                painter.fillRect(box_rect.x(), box_rect.y() - 20, max(68, len(text) * 8), 20, QBrush(QColor("#40c4ff")))
+                painter.setPen(QColor("#111111"))
+                painter.drawText(box_rect.x() + 4, box_rect.y() - 5, text)
         if self.drag_start and self.drag_current:
             painter.setPen(QPen(QColor("#40c4ff"), 2, Qt.PenStyle.DashLine))
             painter.drawRect(QRect(self.drag_start, self.drag_current).normalized())
@@ -517,6 +531,7 @@ class MainWindow(QMainWindow):
         self.history = AnnotationHistory()
         self.undo_action: QAction | None = None
         self.redo_action: QAction | None = None
+        self.propagation_candidates: tuple[PropagationCandidate, ...] = ()
 
         self.canvas = ImageCanvas()
         self.class_list = QListWidget()
@@ -571,6 +586,7 @@ class MainWindow(QMainWindow):
             ("Open Label", self.open_label_dialog, None),
             ("←", self.prev_image, "A"),
             ("→", self.next_image, "D"),
+            ("Smart →", self.smart_next_image, "Shift+D"),
             ("普通 LabelImg", lambda: self.set_mode("draw"), "W"),
             ("智能标注", lambda: self.set_mode("smart"), "Space"),
             ("Duplicate Box", self.duplicate_selected_box, "Ctrl+D"),
@@ -592,6 +608,7 @@ class MainWindow(QMainWindow):
             ("Zoom Out", lambda: self.add_zoom(-10), "Ctrl+-"),
             ("Fit", self.fit_window, "Ctrl+F"),
             ("Save", self.save_current, QKeySequence.StandardKey.Save),
+            ("Accept Propagation Candidates", self.accept_propagation_candidates, "Return"),
         ]
         for text, callback, shortcut in hidden_shortcuts:
             action = QAction(text, self)
@@ -900,6 +917,8 @@ class MainWindow(QMainWindow):
 
     def load_image_with_label(self, image_path: Path, label_path: Path | None = None) -> None:
         self.current_image = image_path
+        self.propagation_candidates = ()
+        self.canvas.candidate_boxes = ()
         self._loading_image = True
         try:
             self.image_size = self.canvas.set_image(image_path)
@@ -949,6 +968,53 @@ class MainWindow(QMainWindow):
             self.image_index += 1
             self.refresh_image_list()
             self.load_current_image()
+
+    def smart_next_image(self) -> None:
+        if not self.images or self.image_index < 0 or self.image_index >= len(self.images) - 1:
+            return
+        if self.canvas.image_array is None:
+            return
+        previous = self.canvas.image_array.copy()
+        previous_boxes = [Box(box.label, box.x1, box.y1, box.x2, box.y2, box.score) for box in self.canvas.boxes]
+        if not self.save_current():
+            return
+        self.image_index += 1
+        self.refresh_image_list()
+        self.load_current_image()
+        if self.canvas.image_array is None or not previous_boxes:
+            return
+        result = propagate_boxes(previous, self.canvas.image_array, previous_boxes, self.backend)
+        if result.committed:
+            self.canvas.boxes.extend(result.committed)
+            self.canvas.selected_index = len(self.canvas.boxes) - 1
+            self.canvas.boxes_changed.emit()
+            self.canvas.selected_changed.emit()
+            self.record_annotation_edit()
+            self.canvas.update()
+            self.status.showMessage(f"Smart next propagated {len(result.committed)} box(es)")
+            return
+        if result.candidates:
+            self.propagation_candidates = result.candidates
+            self.canvas.candidate_boxes = tuple(candidate.box for candidate in result.candidates)
+            self.refresh_boxes()
+            self.canvas.selected_changed.emit()
+            self.canvas.update()
+            self.status.showMessage(
+                f"Smart next found {len(result.candidates)} low-confidence candidate(s); press Return to accept"
+            )
+
+    def accept_propagation_candidates(self) -> None:
+        if not self.propagation_candidates:
+            return
+        self.canvas.boxes.extend(candidate.box for candidate in self.propagation_candidates)
+        self.canvas.selected_index = len(self.canvas.boxes) - 1
+        self.propagation_candidates = ()
+        self.canvas.candidate_boxes = ()
+        self.canvas.boxes_changed.emit()
+        self.canvas.selected_changed.emit()
+        self.record_annotation_edit()
+        self.canvas.update()
+        self.status.showMessage("Accepted propagation candidates")
 
     def smart_click(self, x: int, y: int) -> None:
         if self.canvas.image_array is None:
