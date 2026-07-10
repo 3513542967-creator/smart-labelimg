@@ -16,24 +16,6 @@ Smart-LabelImg-macOS-Apple-Silicon.zip
 2. Unzip it.
 3. Open `Smart LabelImg.app`.
 
-No Python commands are needed for end users. The packaged app includes MobileSAM
-and `models/mobile_sam.pt`, so smart box refinement works without a separate
-model download.
-
-On macOS, if the system blocks the app the first time, right-click
-`Smart LabelImg.app` and choose `Open`. This GitHub build is intended for direct
-download; App Store distribution and notarization are future work.
-
-On Windows, download `Smart-LabelImg-MobileSAM-Windows-x64.zip`, unzip it, and
-double-click `Smart LabelImg.exe`. See
-`docs/windows-install-build.md` for source install and exe build steps.
-
-Smart box refinement runs directly through the bundled MobileSAM model. There is no
-separate crop-size tuning control in the simplified app.
-
-See the full LabelImg comparison and operating manual:
-`docs/labelimg-audit-and-smart-labelimg-manual.md`.
-
 ## 快速使用
 
 1. `Open` 打开图片或图片文件夹。
