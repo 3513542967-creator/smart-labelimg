@@ -35,12 +35,12 @@ from smart_labelimg.annotation import (
     find_annotation_path,
     infer_format_from_path,
     load_annotation,
-    save_annotation,
     voc_path_for_image,
     yolo_path_for_image,
 )
 from smart_labelimg.labels import SIMPLE_LABELS
 from smart_labelimg.paths import resource_path
+from smart_labelimg.save_coordinator import SaveCoordinator, SaveState
 
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
@@ -498,6 +498,9 @@ class MainWindow(QMainWindow):
         self.annotation_format = AnnotationFormat.AUTO
         self._loading_image = False
         self._saving_annotation = False
+        self.save_coordinator = SaveCoordinator()
+        self.save_state = SaveState.SAVED
+        self.loaded_fingerprints: dict[Path, str | None] = {}
 
         self.canvas = ImageCanvas()
         self.class_list = QListWidget()
@@ -789,7 +792,11 @@ class MainWindow(QMainWindow):
     def select_image(self, row: int) -> None:
         if row < 0 or row >= len(self.images) or row == self.image_index:
             return
-        self.save_current()
+        if not self.save_current():
+            self.image_list.blockSignals(True)
+            self.image_list.setCurrentRow(self.image_index)
+            self.image_list.blockSignals(False)
+            return
         self.image_index = row
         self.image_list.blockSignals(True)
         self.image_list.setCurrentRow(row)
@@ -828,6 +835,10 @@ class MainWindow(QMainWindow):
         try:
             resolved_label_path = label_path or self.label_path_for_image(image_path)
             self.current_label_path = resolved_label_path
+            save_path = resolved_label_path or self.current_save_path()
+            if save_path is not None:
+                self.loaded_fingerprints[save_path] = self.save_coordinator.fingerprint(save_path)
+                self.save_coordinator.expected[save_path] = self.loaded_fingerprints[save_path]
             if resolved_label_path is not None:
                 self.annotation_format = infer_format_from_path(resolved_label_path)
                 self.set_annotation_format(self.annotation_format)
@@ -844,14 +855,16 @@ class MainWindow(QMainWindow):
 
     def prev_image(self) -> None:
         if self.images and self.image_index > 0:
-            self.save_current()
+            if not self.save_current():
+                return
             self.image_index -= 1
             self.refresh_image_list()
             self.load_current_image()
 
     def next_image(self) -> None:
         if self.images and self.image_index < len(self.images) - 1:
-            self.save_current()
+            if not self.save_current():
+                return
             self.image_index += 1
             self.refresh_image_list()
             self.load_current_image()
@@ -998,14 +1011,14 @@ class MainWindow(QMainWindow):
             self.verified_images.add(self.current_image)
             self.status.showMessage(f"Verified {self.current_image.name}")
 
-    def save_current(self, show_status: bool = True) -> None:
+    def save_current(self, show_status: bool = True) -> bool:
         if not self.current_image or not self.image_size:
-            return
+            return True
         label_path = self.current_save_path()
         if label_path is None:
-            return
+            return True
         if self._saving_annotation:
-            return
+            return True
         self._saving_annotation = True
         try:
             label_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1013,10 +1026,23 @@ class MainWindow(QMainWindow):
                 self.current_label_path = label_path
             self.annotation_format = infer_format_from_path(label_path)
             self.set_annotation_format(self.annotation_format)
-            save_annotation(label_path, self.canvas.boxes, self.labels, self.image_size, image_path=self.current_image)
+            if label_path not in self.save_coordinator.expected:
+                self.save_coordinator.expected[label_path] = self.loaded_fingerprints.get(
+                    label_path, self.save_coordinator.fingerprint(label_path)
+                )
+            result = self.save_coordinator.save_annotation_atomic(
+                label_path, self.canvas.boxes, self.labels, self.image_size, self.current_image
+            )
+            self.save_state = result.state
+            if result.state is not SaveState.SAVED:
+                detail = result.error or ", ".join(path.name for path in result.conflicts)
+                self.status.showMessage(f"Save {result.state.value}: {detail}")
+                return False
+            self.loaded_fingerprints.update(result.fingerprints)
             self.update_save_target_label()
             if show_status:
                 self.status.showMessage(f"Saved {label_path.name}")
+            return True
         finally:
             self._saving_annotation = False
 

@@ -11,6 +11,7 @@ import numpy as np
 from smart_labelimg import app as app_module
 from smart_labelimg.app import MainWindow
 from smart_labelimg.annotation import AnnotationFormat, Box, save_voc_xml, save_yolo
+from smart_labelimg.save_coordinator import SaveResult, SaveState
 
 
 def test_main_window_initializes():
@@ -346,6 +347,31 @@ def test_image_folder_populates_file_list_and_selects_by_row(tmp_path):
     assert window.image_list.count() == 2
     assert window.current_image == second_image
     assert window.image_list.currentRow() == 1
+    window.close()
+
+
+def test_navigation_stays_on_current_image_after_save_failure(tmp_path, monkeypatch):
+    image_folder = tmp_path / "images"
+    image_folder.mkdir()
+    first_image = image_folder / "one.jpg"
+    second_image = image_folder / "two.jpg"
+    cv2.imwrite(str(first_image), np.zeros((80, 120, 3), dtype=np.uint8))
+    cv2.imwrite(str(second_image), np.zeros((80, 120, 3), dtype=np.uint8))
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    window.open_image_path(image_folder)
+    monkeypatch.setattr(
+        window.save_coordinator,
+        "save_annotation_atomic",
+        lambda *args, **kwargs: SaveResult(SaveState.FAILED, {}, error="disk full"),
+    )
+
+    window.next_image()
+
+    assert window.current_image == first_image
+    assert window.image_index == 0
+    assert window.image_list.currentRow() == 0
+    assert window.save_state is SaveState.FAILED
     window.close()
 
 
