@@ -1,4 +1,6 @@
-# Smart LabelImg for macOS — Product and System Design
+# Smart LabelImg for macOS — Native Rewrite Design (Superseded)
+
+> Superseded on 2026-07-10 by `2026-07-10-smart-labelimg-github-macos-design.md`. The active milestone incrementally improves the existing PySide6 application for a macOS Apple Silicon GitHub release and does not implement this native Swift/App Store design.
 
 **Date:** 2026-07-10
 

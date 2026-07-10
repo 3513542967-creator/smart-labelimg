@@ -1,5 +1,7 @@
 # Native Foundation and Safe I/O Implementation Plan
 
+> **Superseded:** Do not execute this plan. The product direction changed to incremental PySide6 development for a macOS Apple Silicon GitHub release. See `docs/superpowers/specs/2026-07-10-smart-labelimg-github-macos-design.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the first runnable native macOS foundation that discovers image folders, reads and writes LabelImg-compatible YOLO/VOC annotations, protects YOLO class IDs, retains sandbox folder access, and saves without silent data loss.
