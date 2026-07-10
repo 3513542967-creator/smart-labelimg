@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import os
 from pathlib import Path
 
 import cv2
@@ -511,10 +512,6 @@ class ImageCanvas(QWidget):
         return -1
 
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key.Key_Shift and not event.isAutoRepeat():
-            self.mode_toggle_requested.emit()
-            event.accept()
-            return
         moves = {
             Qt.Key.Key_Left: (-1, 0),
             Qt.Key.Key_Right: (1, 0),
@@ -549,7 +546,10 @@ class MainWindow(QMainWindow):
         self.current_label_path: Path | None = None
         self.label_directory: Path | None = None
         self.save_directory: Path | None = None
-        self.annotation_format = AnnotationFormat.AUTO
+        settings_path = Path(os.environ.get("SMART_LABELIMG_SETTINGS_PATH", Path.home() / ".smart-labelimg" / "settings.json"))
+        self.settings_store = SettingsStore(settings_path)
+        self.settings = self.settings_store.load()
+        self.annotation_format = self._settings_annotation_format()
         self._loading_image = False
         self._saving_annotation = False
         self.save_coordinator = SaveCoordinator()
@@ -559,8 +559,6 @@ class MainWindow(QMainWindow):
         self.undo_action: QAction | None = None
         self.redo_action: QAction | None = None
         self.propagation_candidates: tuple[PropagationCandidate, ...] = ()
-        self.settings_store = SettingsStore(Path.home() / ".smart-labelimg" / "settings.json")
-        self.settings = self.settings_store.load()
         self.action_shortcuts: dict[str, str] = {}
         self.actions_by_name: dict[str, QAction] = {}
 
@@ -591,6 +589,12 @@ class MainWindow(QMainWindow):
             except Exception as exc:
                 print(f"MobileSAM backend unavailable, falling back to classical vision: {exc}", file=sys.stderr)
         return ClassicalVisionBackend()
+
+    def _settings_annotation_format(self) -> AnnotationFormat:
+        try:
+            return AnnotationFormat(self.settings.annotation_format)
+        except ValueError:
+            return AnnotationFormat.YOLO
 
     def _build_ui(self) -> None:
         edit_menu = self.menuBar().addMenu("Edit")
@@ -675,6 +679,9 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(QLabel("Save Format"))
         self.save_format_combo.addItem("YOLO TXT", AnnotationFormat.YOLO.value)
         self.save_format_combo.addItem("VOC XML", AnnotationFormat.VOC_XML.value)
+        index = self.save_format_combo.findData(self.annotation_format.value)
+        if index >= 0:
+            self.save_format_combo.setCurrentIndex(index)
         self.save_format_combo.currentIndexChanged.connect(self.set_annotation_format_from_combo)
         toolbar.addWidget(self.save_format_combo)
         self.save_target_label.setMinimumWidth(320)
@@ -851,13 +858,6 @@ class MainWindow(QMainWindow):
     def toggle_mode(self) -> None:
         self.set_mode("draw" if self.canvas.mode == "smart" else "smart")
 
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key.Key_Shift and not event.isAutoRepeat():
-            self.toggle_mode()
-            event.accept()
-            return
-        super().keyPressEvent(event)
-
     def set_crop_size(self, crop_size: int) -> None:
         self.crop_size = crop_size
         if hasattr(self.backend, "crop_size"):
@@ -871,6 +871,7 @@ class MainWindow(QMainWindow):
         fmt_value = self.save_format_combo.currentData()
         if fmt_value:
             self.set_annotation_format(AnnotationFormat(fmt_value))
+            self._persist_settings()
 
     def set_annotation_format(self, fmt: AnnotationFormat) -> None:
         if fmt == AnnotationFormat.AUTO:
@@ -885,14 +886,6 @@ class MainWindow(QMainWindow):
         if previous_path is not None and infer_format_from_path(previous_path) != fmt:
             self.current_label_path = None
         self.update_save_target_label()
-        self.settings = AppSettings(
-            last_image_dir=self.settings.last_image_dir,
-            annotation_format=fmt.value,
-            default_class=self.canvas.current_label,
-            recent_folders=self.settings.recent_folders,
-            brightness=self.canvas.brightness,
-        )
-        self.settings_store.save(self.settings)
         self.status.showMessage(f"Save format: {'VOC XML' if fmt == AnnotationFormat.VOC_XML else 'YOLO TXT'}")
 
     def set_save_label_path(self, label_path: Path) -> None:
@@ -931,15 +924,16 @@ class MainWindow(QMainWindow):
         mode, ok = QInputDialog.getItem(self, "Open", "Open:", ["Image", "Folder"], 0, False)
         if not ok:
             return
+        start_dir = self.settings.last_image_dir or str(Path.home())
         if mode == "Folder":
-            path = QFileDialog.getExistingDirectory(self, "Open image folder", str(Path.home()))
+            path = QFileDialog.getExistingDirectory(self, "Open image folder", start_dir)
             if path:
                 self.open_image_path(Path(path))
             return
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Open image",
-            str(Path.home()),
+            start_dir,
             "Images (*.jpg *.jpeg *.png *.bmp *.webp)",
         )
         if path:

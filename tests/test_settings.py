@@ -20,3 +20,11 @@ def test_corrupt_settings_file_recovers_with_defaults(tmp_path):
 
     assert settings == AppSettings()
     assert path.with_suffix(".json.corrupt").exists()
+
+
+def test_malformed_setting_values_recover_with_defaults(tmp_path):
+    path = tmp_path / "settings.json"
+    path.write_text('{"recent_folders": 123}', encoding="utf-8")
+    store = SettingsStore(path)
+
+    assert store.load() == AppSettings()

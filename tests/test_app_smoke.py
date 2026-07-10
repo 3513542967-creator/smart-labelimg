@@ -12,6 +12,7 @@ from smart_labelimg import app as app_module
 from smart_labelimg.app import MainWindow
 from smart_labelimg.annotation import AnnotationFormat, Box, save_voc_xml, save_yolo
 from smart_labelimg.save_coordinator import SaveResult, SaveState
+from smart_labelimg.settings import AppSettings
 
 
 def test_main_window_initializes():
@@ -515,6 +516,27 @@ def test_labelimg_shortcuts_are_exposed():
     assert window.action_shortcuts["verify"] == "Space"
     assert window.action_shortcuts["edit"] == "Ctrl+J"
     assert window.action_shortcuts["smart_next"] == "Shift+D"
+    window.close()
+
+
+def test_startup_applies_persisted_annotation_format(monkeypatch):
+    class FakeSettingsStore:
+        def __init__(self, path):
+            self.path = path
+
+        def load(self):
+            return AppSettings(annotation_format="voc_xml", default_class="car")
+
+        def save(self, settings):
+            pass
+
+    monkeypatch.setattr(app_module, "SettingsStore", FakeSettingsStore)
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+
+    assert window.annotation_format == AnnotationFormat.VOC_XML
+    assert window.save_format_combo.currentData() == AnnotationFormat.VOC_XML.value
+    assert window.canvas.current_label == "car"
     window.close()
 
 

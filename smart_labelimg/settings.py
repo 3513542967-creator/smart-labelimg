@@ -30,11 +30,11 @@ class SettingsStore:
             return AppSettings()
         allowed = {field.name for field in fields(AppSettings)}
         values = {key: value for key, value in raw.items() if key in allowed}
-        if "recent_folders" in values:
-            values["recent_folders"] = tuple(str(item) for item in values["recent_folders"])
         try:
+            if "recent_folders" in values:
+                values["recent_folders"] = tuple(str(item) for item in values["recent_folders"])
             return AppSettings(**values)
-        except TypeError:
+        except (TypeError, ValueError):
             return AppSettings()
 
     def save(self, settings: AppSettings) -> None:
