@@ -1299,6 +1299,7 @@ class MainWindow(QMainWindow):
     def reset_settings(self) -> None:
         self.settings = AppSettings()
         self.settings_store.save(self.settings)
+        self.set_annotation_format(AnnotationFormat.YOLO)
         self.canvas.apply_brightness(0)
         self.canvas.current_label = self.settings.default_class
         self._refresh_classes(self.canvas.current_label)

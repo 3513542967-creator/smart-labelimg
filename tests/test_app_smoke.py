@@ -566,6 +566,18 @@ def test_labelimg_parity_actions_are_available_without_toolbar_clutter():
     window.close()
 
 
+def test_reset_settings_syncs_live_annotation_format():
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+    window.set_annotation_format(AnnotationFormat.VOC_XML)
+
+    window.reset_settings()
+
+    assert window.annotation_format == AnnotationFormat.YOLO
+    assert window.save_format_combo.currentData() == AnnotationFormat.YOLO.value
+    window.close()
+
+
 def test_smart_next_propagates_current_boxes_to_next_image_and_records_one_history_entry(tmp_path):
     image_folder = tmp_path / "images"
     image_folder.mkdir()
