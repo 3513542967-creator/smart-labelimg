@@ -9,10 +9,14 @@ from PySide6.QtCore import QPoint, QRect, Qt, Signal
 from PySide6.QtGui import QAction, QBrush, QColor, QImage, QKeySequence, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QHBoxLayout,
     QInputDialog,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
@@ -43,6 +47,7 @@ from smart_labelimg.labels import SIMPLE_LABELS
 from smart_labelimg.paths import resource_path
 from smart_labelimg.propagation import PropagationCandidate, propagate_boxes
 from smart_labelimg.save_coordinator import SaveCoordinator, SaveState
+from smart_labelimg.settings import AppSettings, SettingsStore
 
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
@@ -79,6 +84,8 @@ class ImageCanvas(QWidget):
         self.min_box_size = 3
         self.show_labels = True
         self.show_boxes = True
+        self.square_drawing = False
+        self.brightness = 0
         self.zoom_percent = 100
         self.fit_mode = "window"
         self.pan_x = 0.0
@@ -94,6 +101,7 @@ class ImageCanvas(QWidget):
         height, width = rgb.shape[:2]
         qimage = QImage(rgb.data, width, height, width * 3, QImage.Format.Format_RGB888).copy()
         self.pixmap = QPixmap.fromImage(qimage)
+        self.apply_brightness(self.brightness)
         self.boxes = []
         self.candidate_boxes = ()
         self.selected_index = -1
@@ -101,6 +109,25 @@ class ImageCanvas(QWidget):
         self.pan_y = 0.0
         self.update()
         return width, height
+
+    def apply_brightness(self, value: int) -> None:
+        self.brightness = max(-100, min(100, int(value)))
+        if self.image_array is None:
+            self.update()
+            return
+        adjusted = np.clip(self.image_array.astype(np.int16) + self.brightness, 0, 255).astype(np.uint8)
+        height, width = adjusted.shape[:2]
+        qimage = QImage(adjusted.data, width, height, width * 3, QImage.Format.Format_RGB888).copy()
+        self.pixmap = QPixmap.fromImage(qimage)
+        self.update()
+
+    def constrained_drag_point(self, current: QPoint) -> QPoint:
+        if not self.square_drawing or self.drag_start is None:
+            return current
+        dx = current.x() - self.drag_start.x()
+        dy = current.y() - self.drag_start.y()
+        side = max(abs(dx), abs(dy))
+        return QPoint(self.drag_start.x() + (side if dx >= 0 else -side), self.drag_start.y() + (side if dy >= 0 else -side))
 
     def set_boxes(self, boxes: list[Box]) -> None:
         self.boxes = boxes
@@ -407,7 +434,7 @@ class ImageCanvas(QWidget):
             return
 
         if self.drag_start:
-            self.drag_current = event.position().toPoint()
+            self.drag_current = self.constrained_drag_point(event.position().toPoint())
             self.update()
 
     def wheelEvent(self, event):
@@ -436,7 +463,7 @@ class ImageCanvas(QWidget):
         if not self.drag_start or not self.drag_current:
             return
         p1 = self.widget_to_image(self.drag_start)
-        p2 = self.widget_to_image(event.position().toPoint())
+        p2 = self.widget_to_image(self.constrained_drag_point(event.position().toPoint()))
         self.drag_start = None
         self.drag_current = None
         action = self.drag_action
@@ -532,8 +559,14 @@ class MainWindow(QMainWindow):
         self.undo_action: QAction | None = None
         self.redo_action: QAction | None = None
         self.propagation_candidates: tuple[PropagationCandidate, ...] = ()
+        self.settings_store = SettingsStore(Path.home() / ".smart-labelimg" / "settings.json")
+        self.settings = self.settings_store.load()
+        self.action_shortcuts: dict[str, str] = {}
+        self.actions_by_name: dict[str, QAction] = {}
 
         self.canvas = ImageCanvas()
+        self.canvas.current_label = self.settings.default_class
+        self.canvas.apply_brightness(self.settings.brightness)
         self.class_list = QListWidget()
         self.box_list = QListWidget()
         self.image_list = QListWidget()
@@ -577,6 +610,8 @@ class MainWindow(QMainWindow):
         self.redo_action.triggered.connect(self.redo_annotation_edit)
         edit_menu.addAction(self.redo_action)
         self.addAction(self.redo_action)
+        view_menu = self.menuBar().addMenu("View")
+        tools_menu = self.menuBar().addMenu("Tools")
 
         toolbar = QToolBar("Main")
         toolbar.setObjectName("Main")
@@ -588,10 +623,10 @@ class MainWindow(QMainWindow):
             ("→", self.next_image, "D"),
             ("Smart →", self.smart_next_image, "Shift+D"),
             ("普通 LabelImg", lambda: self.set_mode("draw"), "W"),
-            ("智能标注", lambda: self.set_mode("smart"), "Space"),
+            ("智能标注", lambda: self.set_mode("smart"), "S"),
             ("Duplicate Box", self.duplicate_selected_box, "Ctrl+D"),
             ("Copy Prev Boxes", self.copy_previous_boxes, "Ctrl+V"),
-            ("Verify", self.toggle_verified, "V"),
+            ("Verify", self.toggle_verified, "Space"),
             ("Labels", self.toggle_label_display, "Ctrl+Shift+P"),
             ("Delete Box", self.delete_selected, QKeySequence.StandardKey.Delete),
             ("Save/Target", self.save_or_target_dialog, QKeySequence.StandardKey.SaveAs),
@@ -609,12 +644,33 @@ class MainWindow(QMainWindow):
             ("Fit", self.fit_window, "Ctrl+F"),
             ("Save", self.save_current, QKeySequence.StandardKey.Save),
             ("Accept Propagation Candidates", self.accept_propagation_candidates, "Return"),
+            ("Edit Mode", lambda: self.set_mode("edit"), "Ctrl+J"),
         ]
         for text, callback, shortcut in hidden_shortcuts:
             action = QAction(text, self)
             action.triggered.connect(callback)
             action.setShortcut(QKeySequence(shortcut))
             self.addAction(action)
+        self._register_parity_action("square", "Square Boxes", self.toggle_square_drawing, "Shift+W", view_menu)
+        self._register_parity_action("show_boxes", "Show/Hide Boxes", self.toggle_boxes_display, "Ctrl+B", view_menu)
+        self._register_parity_action("fit_width", "Fit Width", self.fit_width, "Ctrl+Shift+F", view_menu)
+        self._register_parity_action("original_size", "Original Size", self.original_size, "Ctrl+0", view_menu)
+        self._register_parity_action("brightness_up", "Brightness +", lambda: self.adjust_brightness(10), "Ctrl+]", view_menu)
+        self._register_parity_action("brightness_down", "Brightness -", lambda: self.adjust_brightness(-10), "Ctrl+[", view_menu)
+        self._register_parity_action("brightness_reset", "Brightness Reset", self.reset_brightness, "Ctrl+Alt+0", view_menu)
+        self._register_parity_action("default_class", "Default Class", self.set_default_class_dialog, "Ctrl+Shift+D", tools_menu)
+        self._register_parity_action("recent_folders", "Recent Folders", self.show_recent_folders, "Ctrl+R", tools_menu)
+        self._register_parity_action("reset_settings", "Reset Settings", self.reset_settings, "Ctrl+Alt+R", tools_menu)
+        self._register_parity_action("shortcuts", "Shortcut Help", self.show_shortcuts_dialog, "Ctrl+/", tools_menu)
+        self.action_shortcuts.update(
+            {
+                "draw": "W",
+                "smart": "S",
+                "verify": "Space",
+                "edit": "Ctrl+J",
+                "smart_next": "Shift+D",
+            }
+        )
         toolbar.addSeparator()
         toolbar.addWidget(QLabel("Save Format"))
         self.save_format_combo.addItem("YOLO TXT", AnnotationFormat.YOLO.value)
@@ -686,6 +742,46 @@ class MainWindow(QMainWindow):
         self.canvas.smart_box_drawn.connect(self.smart_box)
         self.canvas.box_menu_requested.connect(self.show_box_menu)
         self.canvas.mode_toggle_requested.connect(self.toggle_mode)
+
+    def _register_parity_action(
+        self,
+        name: str,
+        text: str,
+        callback,
+        shortcut: str,
+        menu: QMenu,
+    ) -> QAction:
+        action = QAction(text, self)
+        action.triggered.connect(callback)
+        action.setShortcut(QKeySequence(shortcut))
+        menu.addAction(action)
+        self.addAction(action)
+        self.actions_by_name[name] = action
+        return action
+
+    def _persist_settings(self) -> None:
+        self.settings = AppSettings(
+            last_image_dir=self.settings.last_image_dir,
+            annotation_format=self.annotation_format.value
+            if self.annotation_format is not AnnotationFormat.AUTO
+            else self.settings.annotation_format,
+            default_class=self.canvas.current_label,
+            recent_folders=self.settings.recent_folders,
+            brightness=self.canvas.brightness,
+        )
+        self.settings_store.save(self.settings)
+
+    def _remember_folder(self, folder: Path) -> None:
+        folder_text = str(folder)
+        recent = (folder_text, *(item for item in self.settings.recent_folders if item != folder_text))[:10]
+        self.settings = AppSettings(
+            last_image_dir=folder_text,
+            annotation_format=self.settings.annotation_format,
+            default_class=self.canvas.current_label,
+            recent_folders=recent,
+            brightness=self.canvas.brightness,
+        )
+        self.settings_store.save(self.settings)
 
     def record_annotation_edit(self) -> None:
         if self._loading_image:
@@ -789,6 +885,14 @@ class MainWindow(QMainWindow):
         if previous_path is not None and infer_format_from_path(previous_path) != fmt:
             self.current_label_path = None
         self.update_save_target_label()
+        self.settings = AppSettings(
+            last_image_dir=self.settings.last_image_dir,
+            annotation_format=fmt.value,
+            default_class=self.canvas.current_label,
+            recent_folders=self.settings.recent_folders,
+            brightness=self.canvas.brightness,
+        )
+        self.settings_store.save(self.settings)
         self.status.showMessage(f"Save format: {'VOC XML' if fmt == AnnotationFormat.VOC_XML else 'YOLO TXT'}")
 
     def set_save_label_path(self, label_path: Path) -> None:
@@ -862,11 +966,13 @@ class MainWindow(QMainWindow):
         self.label_directory = None
         self.save_directory = None
         if path.is_dir():
+            self._remember_folder(path)
             self.images = sorted(child for child in path.iterdir() if child.suffix.lower() in IMAGE_SUFFIXES)
             self.image_index = 0 if self.images else -1
             self.refresh_image_list()
             self.load_current_image()
             return
+        self._remember_folder(path.parent)
         self.images = [path]
         self.image_index = 0
         self.refresh_image_list()
@@ -1128,6 +1234,14 @@ class MainWindow(QMainWindow):
         self.canvas.show_labels = not self.canvas.show_labels
         self.canvas.update()
 
+    def toggle_boxes_display(self) -> None:
+        self.canvas.show_boxes = not self.canvas.show_boxes
+        self.canvas.update()
+
+    def toggle_square_drawing(self) -> None:
+        self.canvas.square_drawing = not self.canvas.square_drawing
+        self.status.showMessage("Square boxes on" if self.canvas.square_drawing else "Square boxes off")
+
     def set_zoom(self, zoom_percent: int) -> None:
         self.zoom_at_canvas_point(zoom_percent, self.default_zoom_anchor())
 
@@ -1155,6 +1269,79 @@ class MainWindow(QMainWindow):
         self.canvas.fit_mode = "window"
         self.zoom_value_label.setText("Fit")
         self.canvas.update()
+
+    def fit_width(self) -> None:
+        if not self.canvas.pixmap:
+            return
+        zoom = int(round(self.canvas.width() * 100 / max(1, self.canvas.pixmap.width())))
+        self.set_zoom(zoom)
+
+    def original_size(self) -> None:
+        self.set_zoom(100)
+
+    def adjust_brightness(self, delta: int) -> None:
+        self.canvas.apply_brightness(self.canvas.brightness + delta)
+        self._persist_settings()
+
+    def reset_brightness(self) -> None:
+        self.canvas.apply_brightness(0)
+        self._persist_settings()
+
+    def set_default_class_dialog(self) -> None:
+        label, ok = QInputDialog.getItem(self, "Default Class", "Class:", self.labels, 0, False)
+        if ok and label:
+            self.canvas.current_label = label
+            self._refresh_classes(label)
+            self._persist_settings()
+
+    def show_recent_folders(self) -> None:
+        if not self.settings.recent_folders:
+            self.status.showMessage("No recent folders")
+            return
+        folder, ok = QInputDialog.getItem(self, "Recent Folders", "Open:", list(self.settings.recent_folders), 0, False)
+        if ok and folder:
+            self.open_image_path(Path(folder))
+
+    def reset_settings(self) -> None:
+        self.settings = AppSettings()
+        self.settings_store.save(self.settings)
+        self.canvas.apply_brightness(0)
+        self.canvas.current_label = self.settings.default_class
+        self._refresh_classes(self.canvas.current_label)
+        self.status.showMessage("Settings reset")
+
+    def show_shortcuts_dialog(self) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Shortcuts")
+        layout = QVBoxLayout(dialog)
+        search = QLineEdit()
+        search.setPlaceholderText("Search shortcuts")
+        layout.addWidget(search)
+        shortcuts = QListWidget()
+        rows = [
+            f"{name}: {shortcut}"
+            for name, shortcut in sorted(
+                {
+                    **self.action_shortcuts,
+                    **{key: action.shortcut().toString() for key, action in self.actions_by_name.items()},
+                }.items()
+            )
+        ]
+        shortcuts.addItems(rows)
+        layout.addWidget(shortcuts)
+
+        def filter_rows(text: str) -> None:
+            needle = text.casefold()
+            for index in range(shortcuts.count()):
+                item = shortcuts.item(index)
+                item.setHidden(needle not in item.text().casefold())
+
+        search.textChanged.connect(filter_rows)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.resize(420, 420)
+        dialog.exec()
 
     def toggle_verified(self) -> None:
         if self.current_image is None:

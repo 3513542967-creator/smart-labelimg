@@ -506,6 +506,44 @@ def test_smart_next_action_uses_shift_d_shortcut():
     window.close()
 
 
+def test_labelimg_shortcuts_are_exposed():
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+
+    assert window.action_shortcuts["draw"] == "W"
+    assert window.action_shortcuts["smart"] == "S"
+    assert window.action_shortcuts["verify"] == "Space"
+    assert window.action_shortcuts["edit"] == "Ctrl+J"
+    assert window.action_shortcuts["smart_next"] == "Shift+D"
+    window.close()
+
+
+def test_labelimg_parity_actions_are_available_without_toolbar_clutter():
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow()
+
+    for name in [
+        "square",
+        "show_boxes",
+        "fit_width",
+        "original_size",
+        "brightness_up",
+        "brightness_down",
+        "brightness_reset",
+        "default_class",
+        "recent_folders",
+        "reset_settings",
+        "shortcuts",
+    ]:
+        assert name in window.actions_by_name
+
+    toolbar = window.findChild(QToolBar, "Main")
+    action_texts = [action.text() for action in toolbar.actions()]
+    assert "Brightness +" not in action_texts
+    assert "Shortcut Help" not in action_texts
+    window.close()
+
+
 def test_smart_next_propagates_current_boxes_to_next_image_and_records_one_history_entry(tmp_path):
     image_folder = tmp_path / "images"
     image_folder.mkdir()
