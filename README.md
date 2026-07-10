@@ -34,32 +34,26 @@ separate crop-size tuning control in the simplified app.
 See the full LabelImg comparison and operating manual:
 `docs/labelimg-audit-and-smart-labelimg-manual.md`.
 
-## 简要操作手册
+## 快速使用
 
-1. 点击 `Open`，选择单张图片或整个图片文件夹。
-2. 点击 `Open Label`，可以选择已有的 `.txt` / `.xml` 标注文件，或选择一个标签文件夹。
-3. 在顶部 `Save Format` 选择保存格式：YOLO TXT 或 Pascal VOC XML。
-4. 点击 `Save/Target`，选择保存到某个标签文件，或保存到一个标签文件夹。
-5. 进入 `普通 LabelImg` 模式后，鼠标左键拖拽即可画矩形框。
-6. 进入 `智能标注` 模式后，粗略框住目标，MobileSAM 会自动微调成更贴合的框。
-7. 右键/触控板辅助点击目标，可以用 MobileSAM 从点击位置生成候选框。
-8. 左侧类别列表用于切换当前类别；也可以新增、重命名、删除类别。
-9. 右侧图片列表用于快速切换图片；框列表用于查看当前图片已有标注。
-10. 标注会在设置保存目标后自动保存，仍可用 `Cmd+S` / `Ctrl+S` 手动保存。
+1. `Open` 打开图片或图片文件夹。
+2. `Save Format` 选择 YOLO TXT 或 Pascal VOC XML。
+3. `Save/Target` 选择保存位置。
+4. `普通 LabelImg`：手动画矩形框。
+5. `智能标注`：粗略画框，MobileSAM 自动微调。
+6. 选中类别后继续画框，标注会自动保存。
 
 常用快捷键：
 
-- `W`：普通手动画框模式
-- `S`：智能标注模式
-- `A` / `D`：上一张 / 下一张图片
-- `Cmd+A` / `Ctrl+A`：全选当前图片所有框
-- `Delete`：删除选中的框；全选后可一次删除全部框
-- `方向键`：移动选中框；全选后可一起移动全部框
-- `Cmd+D` / `Ctrl+D`：复制当前选中框
-- `Cmd+V` / `Ctrl+V`：复制上一张图片的标注框
-- `Shift+D`：进入下一张并尝试从上一张标注自动传播和微调
+- `W`：手动画框
+- `S`：智能标注
+- `A` / `D`：上一张 / 下一张
+- `Cmd+A` / `Ctrl+A`：全选框
+- `Delete`：删除框
+- `Cmd+D` / `Ctrl+D`：复制框
+- `Cmd+V` / `Ctrl+V`：复制上一张标注
+- `Shift+D`：智能下一张
 - `Cmd+S` / `Ctrl+S`：保存
-- `Cmd+Z` / `Ctrl+Z`：撤销
 
 ## Build A Release
 
