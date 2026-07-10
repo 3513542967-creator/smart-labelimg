@@ -4,17 +4,32 @@ Smart LabelImg is a modern LabelImg-style annotation tool with YOLO TXT, Pascal 
 and local AI-assisted boxes.
 The main workflow is MobileSAM-assisted: draw around an object and MobileSAM tightens the box.
 
-## Download And Run
+## 下载 macOS App
 
-For macOS Apple Silicon users, download:
+适用于 Apple Silicon Mac：M1 / M2 / M3 / M4。
 
-```text
-Smart-LabelImg-macOS-Apple-Silicon.zip
+[⬇️ Download Smart LabelImg for macOS](https://github.com/3513542967-creator/smart-labelimg/releases/latest/download/Smart-LabelImg-macOS-Apple-Silicon.zip)
+
+也可以在终端一键下载并打开：
+
+```bash
+cd ~/Downloads
+curl -L -O https://github.com/3513542967-creator/smart-labelimg/releases/latest/download/Smart-LabelImg-macOS-Apple-Silicon.zip
+unzip Smart-LabelImg-macOS-Apple-Silicon.zip
+open "Smart LabelImg.app"
 ```
 
-1. Download the release zip for your system.
-2. Unzip it.
-3. Open `Smart LabelImg.app`.
+如果 macOS 提示无法打开：
+
+```bash
+xattr -dr com.apple.quarantine "Smart LabelImg.app"
+open "Smart LabelImg.app"
+```
+
+注意：不要下载 GitHub 的 `Source code`，源码包里没有 `.app`。
+
+Smart box refinement runs directly through the bundled MobileSAM model. There is no
+separate crop-size tuning control in the simplified app.
 
 ## 快速使用
 
