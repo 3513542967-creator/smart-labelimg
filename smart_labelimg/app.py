@@ -53,7 +53,7 @@ from smart_labelimg.settings import AppSettings, SettingsStore
 
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
-MOBILE_SAM_CHECKPOINT = resource_path("models/mobile_sam.pt")
+SAM_CHECKPOINT = resource_path("models/sam_vit_b_01ec64.pth")
 
 
 class ImageCanvas(QWidget):
@@ -537,7 +537,6 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Smart LabelImg")
         self.resize(1180, 760)
-        self.crop_size = 768
         self.backend = self._create_backend()
         self.labels = SIMPLE_LABELS.copy()
         self.images: list[Path] = []
@@ -570,7 +569,6 @@ class MainWindow(QMainWindow):
         self.class_list = QListWidget()
         self.box_list = QListWidget()
         self.image_list = QListWidget()
-        self.crop_size_combo = QComboBox()
         self.save_format_combo = QComboBox()
         self.save_target_label = QLabel()
         self.zoom_slider = QSlider(Qt.Orientation.Horizontal)
@@ -585,11 +583,11 @@ class MainWindow(QMainWindow):
         self.update_save_target_label()
 
     def _create_backend(self):
-        if MOBILE_SAM_CHECKPOINT.exists():
+        if SAM_CHECKPOINT.exists():
             try:
-                return SamClickBackend(str(MOBILE_SAM_CHECKPOINT), crop_size=self.crop_size)
+                return SamClickBackend(str(SAM_CHECKPOINT))
             except Exception as exc:
-                print(f"MobileSAM backend unavailable, falling back to classical vision: {exc}", file=sys.stderr)
+                print(f"SAM backend unavailable, falling back to classical vision: {exc}", file=sys.stderr)
         return ClassicalVisionBackend()
 
     def _settings_annotation_format(self) -> AnnotationFormat:
@@ -702,13 +700,6 @@ class MainWindow(QMainWindow):
         delete_class = QPushButton("Delete Class")
         delete_class.clicked.connect(self.delete_current_class)
         side_layout.addWidget(delete_class)
-        side_layout.addWidget(QLabel("Fast Crop Size"))
-        self.crop_size_combo.addItems(["512", "768", "1024", "Full Image"])
-        self.crop_size_combo.setCurrentText(str(self.crop_size))
-        self.crop_size_combo.currentTextChanged.connect(
-            lambda value: self.set_crop_size(0 if value == "Full Image" else int(value))
-        )
-        side_layout.addWidget(self.crop_size_combo)
         side_layout.addWidget(QLabel("Images"))
         side_layout.addWidget(self.image_list)
         side_layout.addWidget(QLabel("Boxes"))
@@ -859,15 +850,6 @@ class MainWindow(QMainWindow):
 
     def toggle_mode(self) -> None:
         self.set_mode("draw" if self.canvas.mode == "smart" else "smart")
-
-    def set_crop_size(self, crop_size: int) -> None:
-        self.crop_size = crop_size
-        if hasattr(self.backend, "crop_size"):
-            self.backend.crop_size = crop_size
-        label = "Full Image" if crop_size <= 0 else str(crop_size)
-        if self.crop_size_combo.currentText() != label:
-            self.crop_size_combo.setCurrentText(label)
-        self.status.showMessage(f"Fast crop size: {label}")
 
     def set_annotation_format_from_combo(self, *_args) -> None:
         fmt_value = self.save_format_combo.currentData()

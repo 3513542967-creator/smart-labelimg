@@ -27,84 +27,6 @@ class SmartBoxBackend(Protocol):
         ...
 
 
-@dataclass
-class CropTransform:
-    x1: int
-    y1: int
-    x2: int
-    y2: int
-    scale: float
-
-    def image_to_crop_box(self, box: tuple[int, int, int, int]) -> np.ndarray:
-        bx1, by1, bx2, by2 = box
-        return np.array(
-            [
-                (bx1 - self.x1) * self.scale,
-                (by1 - self.y1) * self.scale,
-                (bx2 - self.x1) * self.scale,
-                (by2 - self.y1) * self.scale,
-            ],
-            dtype=np.float32,
-        )
-
-    def image_to_crop_point(self, x: int, y: int) -> np.ndarray:
-        return np.array([[(x - self.x1) * self.scale, (y - self.y1) * self.scale]], dtype=np.float32)
-
-    def crop_box_to_image(self, box: Box) -> Box:
-        return Box(
-            box.label,
-            int(round(box.x1 / self.scale + self.x1)),
-            int(round(box.y1 / self.scale + self.y1)),
-            int(round(box.x2 / self.scale + self.x1)),
-            int(round(box.y2 / self.scale + self.y1)),
-            box.score,
-        )
-
-
-def crop_with_transform(
-    image: np.ndarray,
-    center_box: tuple[int, int, int, int],
-    crop_size: int,
-) -> tuple[np.ndarray, CropTransform]:
-    height, width = image.shape[:2]
-    x1, y1, x2, y2 = ClassicalVisionBackend()._clip_tuple(center_box, width, height)
-    crop = image[y1:y2, x1:x2]
-    if crop.size == 0:
-        return crop, CropTransform(x1, y1, x2, y2, 1.0)
-    longest = max(crop.shape[:2])
-    scale = min(1.0, crop_size / longest) if crop_size > 0 else 1.0
-    if scale < 1.0:
-        resized = cv2.resize(crop, (int(round(crop.shape[1] * scale)), int(round(crop.shape[0] * scale))), interpolation=cv2.INTER_AREA)
-        return resized, CropTransform(x1, y1, x2, y2, scale)
-    return crop, CropTransform(x1, y1, x2, y2, 1.0)
-
-
-def scaled_crop_box(image: np.ndarray, box: tuple[int, int, int, int], scale: float) -> tuple[int, int, int, int]:
-    height, width = image.shape[:2]
-    x1, y1, x2, y2 = ClassicalVisionBackend()._clip_tuple(box, width, height)
-    cx = (x1 + x2) / 2
-    cy = (y1 + y2) / 2
-    scaled_width = max(1.0, (x2 - x1) * scale)
-    scaled_height = max(1.0, (y2 - y1) * scale)
-    return (
-        max(0, int(round(cx - scaled_width / 2))),
-        max(0, int(round(cy - scaled_height / 2))),
-        min(width, int(round(cx + scaled_width / 2))),
-        min(height, int(round(cy + scaled_height / 2))),
-    )
-
-
-def centered_crop_box(image: np.ndarray, x: int, y: int, crop_size: int) -> tuple[int, int, int, int]:
-    height, width = image.shape[:2]
-    half = max(1, crop_size // 2)
-    return (
-        max(0, x - half),
-        max(0, y - half),
-        min(width, x + half),
-        min(height, y + half),
-    )
-
-
 class ClassicalVisionBackend:
     """Offline Mac-friendly backend for click boxes and similar-object proposals."""
 
@@ -233,15 +155,13 @@ def mask_to_box(mask: np.ndarray, label: str, score: float | None = None) -> Box
 
 
 @dataclass
-class MobileSamBackend:
+class SamBackend:
     checkpoint_path: str
-    model_type: str = "vit_t"
+    model_type: str = "vit_b"
     device: str | None = None
-    crop_size: int = 768
-    box_crop_scale: float = 1.5
 
     def __post_init__(self) -> None:
-        from mobile_sam import SamPredictor, sam_model_registry
+        from segment_anything import SamPredictor, sam_model_registry
         import torch
 
         if self.device is None:
@@ -258,38 +178,12 @@ class MobileSamBackend:
     def detect_labels(self, image_path: Path, labels: list[str]) -> list[Box]:
         return []
 
-    @staticmethod
-    def crop_for_box(
-        image: np.ndarray,
-        query_box: tuple[int, int, int, int],
-        crop_size: int,
-        box_crop_scale: float,
-    ) -> tuple[np.ndarray, CropTransform]:
-        if crop_size <= 0:
-            height, width = image.shape[:2]
-            return image, CropTransform(0, 0, width, height, 1.0)
-        return crop_with_transform(image, scaled_crop_box(image, query_box, box_crop_scale), crop_size)
-
-    @staticmethod
-    def crop_for_click(
-        image: np.ndarray,
-        x: int,
-        y: int,
-        crop_size: int,
-    ) -> tuple[np.ndarray, CropTransform]:
-        if crop_size <= 0:
-            height, width = image.shape[:2]
-            return image, CropTransform(0, 0, width, height, 1.0)
-        crop_box = centered_crop_box(image, x, y, crop_size)
-        return crop_with_transform(image, crop_box, crop_size)
-
     def detect_from_click(self, image: np.ndarray, x: int, y: int, label: str) -> list[Box]:
-        crop, transform = self.crop_for_click(image, x, y, self.crop_size)
-        if crop.size == 0:
+        if image.size == 0:
             return []
-        self.predictor.set_image(crop)
+        self.predictor.set_image(image)
         masks, scores, _ = self.predictor.predict(
-            point_coords=transform.image_to_crop_point(x, y),
+            point_coords=np.array([[x, y]], dtype=np.float32),
             point_labels=np.array([1], dtype=np.int32),
             multimask_output=True,
         )
@@ -305,8 +199,7 @@ class MobileSamBackend:
         max_score = float(scores[valid].max())
         near_best = valid[scores[valid] >= max_score - 0.12]
         best_index = int(near_best[np.argmax(areas[near_best])])
-        box = mask_to_box(masks[best_index], label=label, score=float(scores[best_index]))
-        mapped = transform.crop_box_to_image(box).clipped((image.shape[1], image.shape[0]))
+        mapped = mask_to_box(masks[best_index], label=label, score=float(scores[best_index])).clipped((image.shape[1], image.shape[0]))
         return [mapped] if mapped.width > 0 and mapped.height > 0 else []
 
     def refine_from_box(self, image: np.ndarray, query_box: tuple[int, int, int, int], label: str) -> list[Box]:
@@ -314,12 +207,9 @@ class MobileSamBackend:
         x1, y1, x2, y2 = ClassicalVisionBackend()._clip_tuple(query_box, width, height)
         if x2 - x1 < 3 or y2 - y1 < 3:
             return []
-        crop, transform = self.crop_for_box(image, (x1, y1, x2, y2), self.crop_size, self.box_crop_scale)
-        if crop.size == 0:
-            return []
-        self.predictor.set_image(crop)
+        self.predictor.set_image(image)
         masks, scores, _ = self.predictor.predict(
-            box=transform.image_to_crop_box((x1, y1, x2, y2)),
+            box=np.array([x1, y1, x2, y2], dtype=np.float32),
             multimask_output=True,
         )
         if len(masks) == 0:
@@ -329,15 +219,14 @@ class MobileSamBackend:
         if len(valid) == 0:
             return []
         best_index = int(valid[np.argmax(scores[valid])])
-        box = mask_to_box(masks[best_index], label=label, score=float(scores[best_index]))
-        mapped = transform.crop_box_to_image(box).clipped((width, height))
+        mapped = mask_to_box(masks[best_index], label=label, score=float(scores[best_index])).clipped((width, height))
         return [mapped] if mapped.width > 0 and mapped.height > 0 else []
 
     def find_similar(self, image: np.ndarray, query_box: tuple[int, int, int, int], label: str) -> list[Box]:
         return ClassicalVisionBackend().find_similar(image, query_box, label)
 
 
-SamClickBackend = MobileSamBackend
+SamClickBackend = SamBackend
 
 
 @dataclass

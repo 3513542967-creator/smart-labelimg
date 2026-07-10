@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_pyinstaller_spec_requires_macos_release_assets():
     spec = (ROOT / "smart-labelimg.spec").read_text(encoding="utf-8")
 
-    assert "models/mobile_sam.pt is required" in spec
+    assert "models/sam_vit_b_01ec64.pth is required" in spec
     assert "assets/AppIcon.icns is required" in spec
     assert 'target_arch="arm64"' in spec
     assert 'bundle_identifier="com.smartlabelimg.app"' in spec

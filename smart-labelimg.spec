@@ -6,10 +6,10 @@ from pathlib import Path
 
 root = Path.cwd()
 datas = []
-mobile_sam_checkpoint = root / "models" / "mobile_sam.pt"
-if not mobile_sam_checkpoint.exists():
-    raise SystemExit("models/mobile_sam.pt is required for the macOS release build")
-datas.append((str(mobile_sam_checkpoint), "models"))
+sam_checkpoint = root / "models" / "sam_vit_b_01ec64.pth"
+if not sam_checkpoint.exists():
+    raise SystemExit("models/sam_vit_b_01ec64.pth is required for the macOS release build")
+datas.append((str(sam_checkpoint), "models"))
 app_icon = root / "assets" / "AppIcon.icns"
 if not app_icon.exists():
     raise SystemExit("assets/AppIcon.icns is required for the macOS release build")

@@ -1,2 +1,2 @@
 torch>=2.2
-mobile-sam @ git+https://github.com/ChaoningZhang/MobileSAM.git
+segment-anything @ git+https://github.com/facebookresearch/segment-anything.git

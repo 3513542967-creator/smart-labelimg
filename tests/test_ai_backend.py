@@ -1,6 +1,6 @@
 import numpy as np
 
-from smart_labelimg.ai_backend import ClassicalVisionBackend, LocateAnythingBackend, MobileSamBackend, mask_to_box
+from smart_labelimg.ai_backend import ClassicalVisionBackend, LocateAnythingBackend, SamBackend, mask_to_box
 
 
 def make_scene():
@@ -43,66 +43,7 @@ def test_classical_refine_from_box_tightens_to_colored_component():
     assert box.y2 < 140
 
 
-def test_mobile_sam_refine_from_box_uses_fast_crop_and_maps_bounds_to_image():
-    class FakePredictor:
-        def __init__(self):
-            self.calls = []
-
-        def set_image(self, image):
-            self.calls.append(("set_image", image.shape))
-
-        def predict(self, **kwargs):
-            self.calls.append(("predict", kwargs))
-            mask = np.zeros((50, 50), dtype=bool)
-            mask[10:35, 8:30] = True
-            return np.array([mask]), np.array([0.93]), None
-
-    backend = object.__new__(MobileSamBackend)
-    backend.predictor = FakePredictor()
-    backend.crop_size = 50
-    backend.box_crop_scale = 1.0
-    image = np.zeros((100, 120, 3), dtype=np.uint8)
-
-    boxes = backend.refine_from_box(image, query_box=(20, 30, 70, 80), label="car")
-
-    assert len(boxes) == 1
-    assert (boxes[0].x1, boxes[0].y1, boxes[0].x2, boxes[0].y2) == (28, 40, 49, 64)
-    assert boxes[0].label == "car"
-    assert boxes[0].score == 0.93
-    predict_kwargs = backend.predictor.calls[-1][1]
-    assert np.array_equal(predict_kwargs["box"], np.array([0, 0, 50, 50], dtype=np.float32))
-
-
-def test_mobile_sam_click_uses_crop_around_point():
-    class FakePredictor:
-        def __init__(self):
-            self.calls = []
-
-        def set_image(self, image):
-            self.calls.append(("set_image", image.shape))
-
-        def predict(self, **kwargs):
-            self.calls.append(("predict", kwargs))
-            mask = np.zeros((40, 40), dtype=bool)
-            mask[15:25, 18:30] = True
-            return np.array([mask]), np.array([0.88]), None
-
-    backend = object.__new__(MobileSamBackend)
-    backend.predictor = FakePredictor()
-    backend.crop_size = 40
-    backend.box_crop_scale = 1.0
-    image = np.zeros((100, 120, 3), dtype=np.uint8)
-
-    boxes = backend.detect_from_click(image, x=50, y=60, label="person")
-
-    assert len(boxes) == 1
-    assert boxes[0].label == "person"
-    assert (boxes[0].x1, boxes[0].y1, boxes[0].x2, boxes[0].y2) == (48, 55, 59, 64)
-    predict_kwargs = backend.predictor.calls[-1][1]
-    assert np.array_equal(predict_kwargs["point_coords"], np.array([[20, 20]], dtype=np.float32))
-
-
-def test_mobile_sam_full_image_mode_uses_original_coordinates():
+def test_sam_refine_from_box_uses_full_image_and_original_box_coordinates():
     class FakePredictor:
         def __init__(self):
             self.calls = []
@@ -114,29 +55,49 @@ def test_mobile_sam_full_image_mode_uses_original_coordinates():
             self.calls.append(("predict", kwargs))
             mask = np.zeros((100, 120), dtype=bool)
             mask[30:80, 20:70] = True
-            return np.array([mask]), np.array([0.91]), None
+            return np.array([mask]), np.array([0.93]), None
 
-    backend = object.__new__(MobileSamBackend)
+    backend = object.__new__(SamBackend)
     backend.predictor = FakePredictor()
-    backend.crop_size = 0
-    backend.box_crop_scale = 1.0
     image = np.zeros((100, 120, 3), dtype=np.uint8)
 
     boxes = backend.refine_from_box(image, query_box=(20, 30, 70, 80), label="car")
 
-    assert boxes == [boxes[0]]
+    assert len(boxes) == 1
     assert (boxes[0].x1, boxes[0].y1, boxes[0].x2, boxes[0].y2) == (20, 30, 69, 79)
+    assert boxes[0].label == "car"
+    assert boxes[0].score == 0.93
     assert backend.predictor.calls[0] == ("set_image", image.shape)
-    assert np.array_equal(backend.predictor.calls[-1][1]["box"], np.array([20, 30, 70, 80], dtype=np.float32))
+    predict_kwargs = backend.predictor.calls[-1][1]
+    assert np.array_equal(predict_kwargs["box"], np.array([20, 30, 70, 80], dtype=np.float32))
 
 
-def test_mobile_sam_box_scale_expands_crop_before_resize():
+def test_sam_click_uses_full_image_and_original_point_coordinates():
+    class FakePredictor:
+        def __init__(self):
+            self.calls = []
+
+        def set_image(self, image):
+            self.calls.append(("set_image", image.shape))
+
+        def predict(self, **kwargs):
+            self.calls.append(("predict", kwargs))
+            mask = np.zeros((100, 120), dtype=bool)
+            mask[55:65, 48:60] = True
+            return np.array([mask]), np.array([0.88]), None
+
+    backend = object.__new__(SamBackend)
+    backend.predictor = FakePredictor()
     image = np.zeros((100, 120, 3), dtype=np.uint8)
 
-    crop, transform = MobileSamBackend.crop_for_box(image, (30, 40, 50, 60), crop_size=1000, box_crop_scale=1.5)
+    boxes = backend.detect_from_click(image, x=50, y=60, label="person")
 
-    assert crop.shape[:2] == (30, 30)
-    assert (transform.x1, transform.y1, transform.x2, transform.y2) == (25, 35, 55, 65)
+    assert len(boxes) == 1
+    assert boxes[0].label == "person"
+    assert (boxes[0].x1, boxes[0].y1, boxes[0].x2, boxes[0].y2) == (48, 55, 59, 64)
+    assert backend.predictor.calls[0] == ("set_image", image.shape)
+    predict_kwargs = backend.predictor.calls[-1][1]
+    assert np.array_equal(predict_kwargs["point_coords"], np.array([[50, 60]], dtype=np.float32))
 
 
 def test_find_similar_finds_second_matching_object():

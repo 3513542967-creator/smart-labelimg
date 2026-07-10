@@ -263,32 +263,6 @@ def test_load_image_with_explicit_xml_label_path(tmp_path):
     window.close()
 
 
-def test_crop_size_setting_updates_backend():
-    app = QApplication.instance() or QApplication([])
-    window = MainWindow()
-
-    window.set_crop_size(512)
-
-    assert window.crop_size == 512
-    if hasattr(window.backend, "crop_size"):
-        assert window.backend.crop_size == 512
-    window.close()
-
-
-def test_crop_size_can_be_set_to_full_image_and_box_scale_defaults_to_one_point_five():
-    app = QApplication.instance() or QApplication([])
-    window = MainWindow()
-
-    window.set_crop_size(0)
-
-    assert window.crop_size == 0
-    assert window.crop_size_combo.currentText() == "Full Image"
-    if hasattr(window.backend, "crop_size"):
-        assert window.backend.crop_size == 0
-        assert window.backend.box_crop_scale == 1.5
-    window.close()
-
-
 def test_class_names_can_be_renamed_and_removed():
     app = QApplication.instance() or QApplication([])
     window = MainWindow()
